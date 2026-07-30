@@ -1,14 +1,18 @@
-# Coupa Framework
+Coupa Framework
+Framework desenvolvido em Python para automatizar processos na plataforma Coupa.
 
-Framework desktop (PyQt6) com automações para o fluxo de compras no Coupa: extração de dados, download de orçamentos, geração de PDF de pedidos, organização de arquivos e disparo de e-mails.
-
-## Setup local
-
-1. `pip install -r requirements.txt`
-2. `playwright install` (baixa os browsers usados pela automação)
-3. Copie `.env.example` para `.env` e preencha com os valores reais da sua instância Coupa:
-   - `COUPA_BASE_URL`
-   - `COUPA_FW_SECRET`
-4. `python main.py`
-
-Os arquivos `coupa_profiles.json`, `coupa_profiles.salt`, mapeamentos de fornecedores/unidades e relatórios gerados não fazem parte do repositório (veja `.gitignore`) — são dados locais/sensíveis de cada instalação.
+Recursos
+Download automático de documentos
+Processamento e organização de arquivos
+Extração de dados de PDFs
+Interface gráfica para execução das automações
+Logs e acompanhamento do processamento
+Tecnologias
+Python
+Selenium
+PyQt6
+PyMuPDF
+OpenPyXL
+python-docx
+Objetivo
+Reduzir tarefas repetitivas e aumentar a produtividade dos processos de compras e Supply Chain.# Coupa-Framework Automação de processos para a plataforma Coupa utilizando Python, Selenium e interface gráfica, com recursos para download de documentos, extração de dados e gerenciamento de requisições.
