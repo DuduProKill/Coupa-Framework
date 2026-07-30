@@ -1,0 +1,94 @@
+@echo off
+title Build - Coupa Framework
+
+echo ============================================================
+echo  Coupa Framework - Build do Instalador (4 etapas)
+echo ============================================================
+echo.
+
+py --version > nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERRO] Python nao encontrado. Instale o Python 3.10+ e tente novamente.
+    pause
+    exit /b 1
+)
+
+echo [1/4] Instalando PyInstaller...
+py -m pip install --upgrade pyinstaller > nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERRO] Falha ao instalar PyInstaller.
+    pause
+    exit /b 1
+)
+echo       OK
+
+echo [2/4] Instalando dependencias do projeto...
+py -m pip install -r requirements.txt > nul 2>&1
+echo       OK
+
+echo [3/4] Compilando o executavel com PyInstaller...
+if exist "dist\CoupaFramework" rmdir /s /q "dist\CoupaFramework"
+if exist "build" rmdir /s /q "build"
+
+py -m PyInstaller coupa_framework.spec --noconfirm --clean
+if %errorlevel% neq 0 (
+    echo.
+    echo [ERRO] Falha na compilacao. Veja os erros acima.
+    pause
+    exit /b 1
+)
+echo       OK
+
+echo       Removendo playwright driver (browsers nao necessarios)...
+if exist "dist\CoupaFramework\_internal\playwright\driver\package\.local-browsers" (
+    rmdir /s /q "dist\CoupaFramework\_internal\playwright\driver\package\.local-browsers"
+)
+if exist "dist\CoupaFramework\_internal\playwright\driver\package\lib" (
+    rmdir /s /q "dist\CoupaFramework\_internal\playwright\driver\package\lib"
+)
+echo       Removendo traducoes desnecessarias do PyQt6...
+if exist "dist\CoupaFramework\_internal\PyQt6\Qt6\translations" (
+    rmdir /s /q "dist\CoupaFramework\_internal\PyQt6\Qt6\translations"
+)
+echo       Removendo plugins Qt6 nao utilizados...
+if exist "dist\CoupaFramework\_internal\PyQt6\Qt6\plugins\sqldrivers" (
+    rmdir /s /q "dist\CoupaFramework\_internal\PyQt6\Qt6\plugins\sqldrivers"
+)
+if exist "dist\CoupaFramework\_internal\PyQt6\Qt6\plugins\imageformats" (
+    rmdir /s /q "dist\CoupaFramework\_internal\PyQt6\Qt6\plugins\imageformats"
+)
+echo       OK
+
+echo [4/4] Gerando instalador com Inno Setup...
+
+set "INNO=C:\Users\eduardo.rafael\AppData\Local\Programs\Inno Setup 6\ISCC.exe"
+if not exist "%INNO%" set "INNO=C:\Program Files\Inno Setup 6\ISCC.exe"
+
+if exist "%INNO%" (
+    if not exist "installer_output" mkdir "installer_output"
+    "%INNO%" installer.iss
+    if %errorlevel% neq 0 (
+        echo [ERRO] Falha ao gerar o instalador com Inno Setup.
+        pause
+        exit /b 1
+    )
+    echo       OK
+    echo.
+    echo ============================================================
+    echo  SUCESSO! Instalador gerado em: installer_output\
+    echo ============================================================
+) else (
+    echo.
+    echo [AVISO] Inno Setup nao encontrado.
+    echo O executavel foi gerado em: dist\CoupaFramework\CoupaFramework.exe
+    echo.
+    echo Para gerar o instalador .exe:
+    echo   1. Baixe o Inno Setup em: https://jrsoftware.org/isdl.php
+    echo   2. Instale e execute novamente este script.
+    echo.
+    echo ============================================================
+    echo  Build concluido sem instalador. EXE em: dist\CoupaFramework\
+    echo ============================================================
+)
+
+pause
