@@ -89,6 +89,11 @@ class FrameworkApp(QMainWindow):
         # Conectar troca de aba para atualizar status
         self.tab_widget.currentChanged.connect(self._on_tab_changed)
 
+        # Sincronizar perfis entre abas: qdo alterado no Gerenciar Perfis,
+        # atualiza automaticamente os combos da Aba 1 (Extrator) e Aba 6 (E-mail)
+        self.tab_manage_profiles.profiles_changed.connect(self.tab_coupa.refresh_profiles)
+        self.tab_manage_profiles.profiles_changed.connect(self.tab_email_sender.refresh_profiles)
+
     def _on_tab_changed(self, index: int):
         tab_text = self.tab_widget.tabText(index).strip()
         self.lbl_status.setText(f"Aba ativa: {tab_text}")

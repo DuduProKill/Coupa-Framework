@@ -286,15 +286,20 @@ class EmailSenderWidget(QWidget):
         except Exception as e:
             self.log(f"\u2139\ufe0f Nenhuma credencial salva encontrada no keyring: {str(e)}")
 
-    def showEvent(self, event):
+    def refresh_profiles(self):
+        """Sincroniza os perfis com a aba Gerenciar Perfis."""
         self.profiles = ProfileManager.load_profiles()
         current = self.combo_perfis.currentText()
         self.combo_perfis.blockSignals(True)
         self.combo_perfis.clear()
         self.combo_perfis.addItem("Padr\u00e3o")
         self.combo_perfis.addItems(self.profiles.keys())
-        self.combo_perfis.setCurrentText(current)
+        if current in self.profiles:
+            self.combo_perfis.setCurrentText(current)
         self.combo_perfis.blockSignals(False)
+
+    def showEvent(self, event):
+        self.refresh_profiles()
         super().showEvent(event)
 
     def log(self, msg: str):
