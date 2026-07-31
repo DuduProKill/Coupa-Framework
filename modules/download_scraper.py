@@ -154,80 +154,83 @@ class DownloadScraper:
                     log_callback(f"ERRO CRÍTICO AO INICIAR EDGE: {str(e)}")
                     return False
 
-            try:
-                pages = context.pages
-                page = pages[0] if pages else await context.new_page()
+                try:
+                    pages = context.pages
+                    page = pages[0] if pages else await context.new_page()
 
-                total_reqs = len(self.requisicoes)
-                for idx, req in enumerate(self.requisicoes, 1):
-                    if self.cancelado:
-                        break
+                    total_reqs = len(self.requisicoes)
+                    for idx, req in enumerate(self.requisicoes, 1):
+                        if self.cancelado:
+                            break
 
-                    url = f"{COUPA_BASE_URL.rstrip('/')}/requisition_headers/{req.strip()}"
-                    log_callback(f"📂 Processando requisição #{req}...")
-
-                    try:
-                        await page.goto(url, wait_until="load", timeout=60000)
-
-                        if "login" in page.url.lower():
-                            log_callback("⚠️ Realize o login no Edge se necessário...")
-                            await page.wait_for_url(lambda u: "login" not in u.lower(), timeout=300000)
-                            await page.wait_for_load_state("networkidle", timeout=15000)
+                        url = f"{COUPA_BASE_URL.rstrip('/')}/requisition_headers/{req.strip()}"
+                        log_callback(f"📂 Processando requisição #{req}...")
 
                         try:
-                            await page.wait_for_selector("span.attachment-file", timeout=10000)
-                        except Exception as e:
-                            log_callback(f"ℹ️ Nenhum span.attachment-file encontrado para #{req}: {str(e)}")
+                            await page.goto(url, wait_until="load", timeout=60000)
 
-                        anexos_elementos = await page.query_selector_all("span.attachment-file")
-                        total_anexos = len(anexos_elementos)
-                        if total_anexos == 0:
-                            self.requisicoes_sem_arquivos.append(req)
-                            progress_req_callback(int((idx / total_reqs) * 100))
-                            continue
+                            if "login" in page.url.lower():
+                                log_callback("⚠️ Realize o login no Edge se necessário...")
+                                await page.wait_for_url(lambda u: "login" not in u.lower(), timeout=300000)
+                                await page.wait_for_load_state("networkidle", timeout=15000)
 
-                        arquivos_salvos_no_req = 0
-                        for i, an_el in enumerate(anexos_elementos, 1):
-                            if self.cancelado:
-                                break
-                            nome = await an_el.inner_text()
+                            try:
+                                await page.wait_for_selector("span.attachment-file", timeout=10000)
+                            except Exception as e:
+                                log_callback(f"ℹ️ Nenhum span.attachment-file encontrado para #{req}: {str(e)}")
 
-                            if self.contem_de_acordo(nome):
-                                progress_down_callback(int((i / total_anexos) * 100))
+                            anexos_elementos = await page.query_selector_all("span.attachment-file")
+                            total_anexos = len(anexos_elementos)
+                            if total_anexos == 0:
+                                self.requisicoes_sem_arquivos.append(req)
+                                progress_req_callback(int((idx / total_reqs) * 100))
                                 continue
 
-                            arquivo_temporario = os.path.join(self.pasta_download, f"temp_{nome}")
-                            try:
-                                async with page.expect_download(timeout=30000) as download_info:
-                                    await an_el.click()
-                                download = await download_info.value
-                                await download.save_as(arquivo_temporario)
+                            arquivos_salvos_no_req = 0
+                            for i, an_el in enumerate(anexos_elementos, 1):
+                                if self.cancelado:
+                                    break
+                                nome = await an_el.inner_text()
 
-                                extensoes_suportadas = (".pdf", ".docx", ".xlsx", ".pptx", ".csv", ".txt")
-                                if nome.lower().endswith(extensoes_suportadas):
-                                    sucesso, _ = self.analisar_arquivo(arquivo_temporario, req, nome)
-                                    if sucesso:
-                                        arquivos_salvos_no_req += 1
-                            except Exception as e:
-                                log_callback(f"⚠️ Erro ao baixar anexo '{nome}' da requisição #{req}: {str(e)}")
-                            finally:
-                                if os.path.exists(arquivo_temporario):
-                                    os.remove(arquivo_temporario)
+                                if self.contem_de_acordo(nome):
+                                    progress_down_callback(int((i / total_anexos) * 100))
+                                    continue
 
-                            progress_down_callback(int((i / total_anexos) * 100))
+                                arquivo_temporario = os.path.join(self.pasta_download, f"temp_{nome}")
+                                try:
+                                    async with page.expect_download(timeout=30000) as download_info:
+                                        await an_el.click()
+                                    download = await download_info.value
+                                    await download.save_as(arquivo_temporario)
 
-                        if arquivos_salvos_no_req == 0:
-                            self.requisicoes_sem_arquivos.append(req)
+                                    extensoes_suportadas = (".pdf", ".docx", ".xlsx", ".pptx", ".csv", ".txt")
+                                    if nome.lower().endswith(extensoes_suportadas):
+                                        sucesso, _ = self.analisar_arquivo(arquivo_temporario, req, nome)
+                                        if sucesso:
+                                            arquivos_salvos_no_req += 1
+                                except Exception as e:
+                                    log_callback(f"⚠️ Erro ao baixar anexo '{nome}' da requisição #{req}: {str(e)}")
+                                finally:
+                                    if os.path.exists(arquivo_temporario):
+                                        os.remove(arquivo_temporario)
 
-                    except Exception as e:
-                        log_callback(f"❌ Erro ao processar #{req}: {str(e)}")
-                        log_callback(f"   Detalhes: {traceback.format_exc()}")
+                                progress_down_callback(int((i / total_anexos) * 100))
 
-                    progress_req_callback(int((idx / total_reqs) * 100))
+                            if arquivos_salvos_no_req == 0:
+                                self.requisicoes_sem_arquivos.append(req)
 
-            finally:
+                        except Exception as e:
+                            log_callback(f"❌ Erro ao processar #{req}: {str(e)}")
+                            log_callback(f"   Detalhes: {traceback.format_exc()}")
+
+                        progress_req_callback(int((idx / total_reqs) * 100))
+
+                finally:
                     if context:
-                        await context.close()
+                        try:
+                            await context.close()
+                        except Exception as e:
+                            log_callback(f"ℹ️ Contexto já estava fechado: {str(e)}")
         finally:
             shutil.rmtree(user_data_dir, ignore_errors=True)
 
