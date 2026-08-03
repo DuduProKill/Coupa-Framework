@@ -5,6 +5,7 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 datas = []
 datas += collect_data_files('fitz')          # PyMuPDF
+datas += collect_data_files('numpy')
 datas += collect_data_files('pandas')
 datas += collect_data_files('openpyxl')
 datas += collect_data_files('docx')
@@ -21,7 +22,9 @@ hiddenimports = []
 hiddenimports += collect_submodules('PyQt6')
 hiddenimports += collect_submodules('cryptography')
 hiddenimports += collect_submodules('keyring')
+hiddenimports += collect_submodules('numpy')
 hiddenimports += [
+    'numpy',
     'pandas',
     'openpyxl',
     'openpyxl.styles',
@@ -58,7 +61,6 @@ a = Analysis(
         'tkinter',
         'matplotlib',
         'scipy',
-        'numpy',           # não usado diretamente; pandas traz o necessário
         'IPython',
         'jupyter',
         'notebook',
