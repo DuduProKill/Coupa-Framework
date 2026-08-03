@@ -26,6 +26,7 @@ hiddenimports += collect_submodules('keyring')
 hiddenimports += collect_submodules('PIL')
 hiddenimports += collect_submodules('numpy')
 hiddenimports += [
+    'requests',
     'numpy',
     'pandas',
     'openpyxl',
