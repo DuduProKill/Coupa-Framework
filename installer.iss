@@ -7,12 +7,14 @@ DefaultDirName={autopf}\CoupaFramework
 DefaultGroupName=Coupa Framework
 OutputDir=installer_output
 OutputBaseFilename=CoupaFramework_Setup_v1.1.0
+SetupIconFile=assets\icon.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64
 UninstallDisplayIcon={app}\CoupaFramework.exe
+UninstallDisplayName=Coupa Framework v1.1.0
 MinVersion=10.0
 VersionInfoVersion=1.1.0
 VersionInfoCompany=Coupa Framework
@@ -30,11 +32,13 @@ Name: "desktopicon"; Description: "Criar atalho na Área de Trabalho"; GroupDesc
 [Files]
 ; Copia toda a pasta gerada pelo PyInstaller
 Source: "dist\CoupaFramework\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Copia o icone para que os atalhos possam referencia-lo
+Source: "assets\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Coupa Framework"; Filename: "{app}\CoupaFramework.exe"
+Name: "{group}\Coupa Framework"; Filename: "{app}\CoupaFramework.exe"; IconFilename: "{app}\icon.ico"
 Name: "{group}\Desinstalar Coupa Framework"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\Coupa Framework"; Filename: "{app}\CoupaFramework.exe"; Tasks: desktopicon
+Name: "{autodesktop}\Coupa Framework"; Filename: "{app}\CoupaFramework.exe"; IconFilename: "{app}\icon.ico"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\CoupaFramework.exe"; Description: "Iniciar Coupa Framework agora"; Flags: nowait postinstall skipifsilent

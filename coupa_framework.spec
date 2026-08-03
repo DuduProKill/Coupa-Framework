@@ -93,6 +93,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
+    icon='assets/icon.ico',
     # UPX pode corromper DLLs do Qt e do Playwright — excluir explicitamente
     upx_exclude=[
         'Qt6*.dll',
