@@ -103,7 +103,7 @@ class UpdateManager(QObject):
     def _on_downloaded(self, path: str):
         self._progress_dlg.close()
         subprocess.Popen(
-            [path, "/SILENT", "/CLOSEAPPLICATIONS"],
+            [path, "/SILENT", "/CLOSEAPPLICATIONS", "/CURRENTUSER"],
             creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
         )
         QApplication.quit()
