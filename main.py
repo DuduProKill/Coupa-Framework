@@ -10,6 +10,7 @@ from modules import (
     EmailSenderWidget, ProfileManagerWidget
 )
 from modules.styles import APP_STYLESHEET
+from modules.playwright_pool import cleanup_playwright_pool
 
 class FrameworkApp(QMainWindow):
     def __init__(self):
@@ -100,6 +101,11 @@ class FrameworkApp(QMainWindow):
 
     def set_status(self, message: str):
         self.lbl_status.setText(message)
+
+    def closeEvent(self, event):
+        """Item 3: Libera todos os contextos do PlaywrightPool ao fechar o app."""
+        cleanup_playwright_pool()
+        super().closeEvent(event)
 
 
 if __name__ == "__main__":

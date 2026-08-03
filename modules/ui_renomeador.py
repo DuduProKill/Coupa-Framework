@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import pyqtSignal, QThread
 from modules.logger import UILogger
+from modules.config import HISTORICO_RENOMEADOR
 import fitz
 from filelock import FileLock, Timeout
 
@@ -61,7 +62,8 @@ class RenomeadorWidget(QWidget):
         super().__init__()
         self.parent_fw = parent_framework
         self.pasta = ""
-        self.historico_path = Path(__file__).resolve().parents[1] / "historico_renomeador.csv"
+        self.historico_path = HISTORICO_RENOMEADOR  # Item 16: path centralizado em config.py
+        HISTORICO_RENOMEADOR.parent.mkdir(parents=True, exist_ok=True)
         self._pdf_cache = PDFCache()
         self.init_ui()
 

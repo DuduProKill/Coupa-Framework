@@ -10,9 +10,38 @@ Uso:
     UILogger.error(txt_logs, "Erro")
 """
 
+import logging
+import os
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from typing import Optional
 from PyQt6.QtWidgets import QTextEdit
+
+
+def _setup_file_logger() -> logging.Logger:
+    """Item 4: Configura RotatingFileHandler em %APPDATA%\\CoupaFramework\\logs\\."""
+    log_dir = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "CoupaFramework" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "coupa_framework.log"
+
+    logger = logging.getLogger("CoupaFramework")
+    if logger.handlers:
+        return logger  # já configurado
+
+    logger.setLevel(logging.DEBUG)
+    handler = RotatingFileHandler(
+        log_file,
+        maxBytes=2 * 1024 * 1024,  # 2 MB por arquivo
+        backupCount=5,
+        encoding="utf-8",
+    )
+    handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+    logger.addHandler(handler)
+    return logger
+
+
+_file_logger = _setup_file_logger()
 
 
 class UILogger:
@@ -36,6 +65,7 @@ class UILogger:
     @staticmethod
     def info(log_widget: Optional[QTextEdit], msg: str) -> None:
         """Loga uma mensagem informativa (azul claro)."""
+        _file_logger.info(msg)
         if log_widget is None:
             return
         html = UILogger._format("INFO", "#60a5fa", msg)
@@ -44,6 +74,7 @@ class UILogger:
     @staticmethod
     def warning(log_widget: Optional[QTextEdit], msg: str) -> None:
         """Loga um aviso (amarelo)."""
+        _file_logger.warning(msg)
         if log_widget is None:
             return
         html = UILogger._format("AVISO", "#fbbf24", msg)
@@ -52,6 +83,7 @@ class UILogger:
     @staticmethod
     def error(log_widget: Optional[QTextEdit], msg: str) -> None:
         """Loga um erro (vermelho)."""
+        _file_logger.error(msg)
         if log_widget is None:
             return
         html = UILogger._format("ERRO", "#f87171", msg)
@@ -60,6 +92,7 @@ class UILogger:
     @staticmethod
     def success(log_widget: Optional[QTextEdit], msg: str) -> None:
         """Loga uma mensagem de sucesso (verde)."""
+        _file_logger.info(msg)
         if log_widget is None:
             return
         html = UILogger._format("OK", "#4ade80", msg)
@@ -68,6 +101,7 @@ class UILogger:
     @staticmethod
     def plain(log_widget: Optional[QTextEdit], msg: str) -> None:
         """Loga mensagem em texto plano (sem HTML), compatível com logs antigos."""
+        _file_logger.info(msg)
         if log_widget is None:
             return
         horario = datetime.now().strftime("%H:%M:%S")

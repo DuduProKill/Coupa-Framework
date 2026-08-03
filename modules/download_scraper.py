@@ -6,14 +6,14 @@ import traceback
 from typing import List
 from pathlib import Path
 
+import fitz  # PyMuPDF (já está no requirements.txt)
 from docx import Document
 from openpyxl import load_workbook
 from pptx import Presentation
-from pypdf import PdfReader
-from playwright.async_api import async_playwright
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from modules.config import COUPA_BASE_URL, PALAVRAS_CHAVE
+from modules.config import COUPA_BASE_URL, PALAVRAS_CHAVE, PERFIL_EDGE_DOWNLOAD
+from modules.playwright_pool import PlaywrightContextManager
 
 
 class DownloadScraper:
@@ -36,18 +36,29 @@ class DownloadScraper:
         texto = texto.replace("_", " ").replace("-", " ")
         return "de acordo" in self.normalizar_texto(texto)
 
+    def _extrair_texto_log(self, msg: str) -> None:
+        """Melhoria 8: loga erro via _log_callback ou logger padrão."""
+        try:
+            if hasattr(self, '_log_callback') and self._log_callback:
+                self._log_callback(msg)
+            else:
+                import logging
+                logging.getLogger(__name__).warning(msg)
+        except Exception:
+            pass
+
     def extrair_texto(self, caminho_arquivo: str) -> str:
         """Extrai texto de arquivos PDF, DOCX, TXT, CSV, XLSX, PPTX.
-        
-        Agora com logging de erro detalhado em vez de silencioso.
+
+        Melhoria 8: logging via callback em vez de print().
         """
         extensao = os.path.splitext(caminho_arquivo)[1].lower()
         texto = ""
         try:
             if extensao == ".pdf":
-                leitor = PdfReader(caminho_arquivo)
-                for pagina in leitor.pages:
-                    texto += pagina.extract_text() or ""
+                with fitz.open(caminho_arquivo) as pdf:
+                    for pagina in pdf:
+                        texto += pagina.get_text() or ""
             elif extensao == ".docx":
                 documento = Document(caminho_arquivo)
                 for paragrafo in documento.paragraphs:
@@ -74,7 +85,10 @@ class DownloadScraper:
                         if hasattr(shape, "text"):
                             texto += shape.text + "\n"
         except Exception as e:
-            print(f"[DownloadScraper] Erro ao extrair texto de '{os.path.basename(caminho_arquivo)}': {str(e)}\n{traceback.format_exc()}")
+            self._extrair_texto_log(
+                f"[DownloadScraper] Erro ao extrair texto de "
+                f"'{os.path.basename(caminho_arquivo)}': {str(e)}"
+            )
             return ""
         return texto.lower()
 
@@ -138,101 +152,93 @@ class DownloadScraper:
 
     async def run(self, log_callback, progress_req_callback, progress_down_callback) -> bool:
         log_callback("Iniciando Edge com Perfil Isolado...")
-        import tempfile
-        user_data_dir = tempfile.mkdtemp(prefix="Coupa_Download_Profile_")
+        user_data_dir = str(PERFIL_EDGE_DOWNLOAD)  # Item 16: path centralizado em config.py
+        PERFIL_EDGE_DOWNLOAD.mkdir(parents=True, exist_ok=True)
+
         try:
-            async with async_playwright() as p:
-                context = None
+            async with PlaywrightContextManager(user_data_dir=user_data_dir) as context:
+                return await self._processar(context, log_callback, progress_req_callback, progress_down_callback)
+        except Exception as e:
+            log_callback(f"ERRO CRÍTICO AO INICIAR EDGE: {str(e)}")
+            return False
+
+    async def _processar(self, context, log_callback, progress_req_callback, progress_down_callback) -> bool:
+        pages = context.pages
+        page = pages[0] if pages else await context.new_page()
+
+        total_reqs = len(self.requisicoes)
+        for idx, req in enumerate(self.requisicoes, 1):
+            if self.cancelado:
+                break
+
+            url = f"{COUPA_BASE_URL.rstrip('/')}/requisition_headers/{req.strip()}"
+            log_callback(f"📂 Processando requisição #{req}...")
+
+            try:
                 try:
-                    context = await p.chromium.launch_persistent_context(
-                        user_data_dir=user_data_dir,
-                        channel="msedge",
-                        headless=False,
-                        no_viewport=True,
+                    await page.goto(url, wait_until="load", timeout=60000)
+                except Exception:
+                    log_callback("⏳ Página demorou para carregar (possível tela de login)...")
+
+                if "login" in page.url.lower() or "sso" in page.url.lower():
+                    log_callback("⚠️ Realize o login no Edge se necessário...")
+                    await page.wait_for_url(
+                        lambda u: "login" not in u.lower() and "sso" not in u.lower(),
+                        timeout=300000,
                     )
-                except Exception as e:
-                    log_callback(f"ERRO CRÍTICO AO INICIAR EDGE: {str(e)}")
-                    return False
+                    await page.wait_for_load_state("networkidle", timeout=15000)
+                    await page.goto(url, wait_until="load", timeout=60000)
 
                 try:
-                    pages = context.pages
-                    page = pages[0] if pages else await context.new_page()
+                    await page.wait_for_selector("span.attachment-file", timeout=10000)
+                except Exception as e:
+                    log_callback(f"ℹ️ Nenhum span.attachment-file encontrado para #{req}: {str(e)}")
 
-                    total_reqs = len(self.requisicoes)
-                    for idx, req in enumerate(self.requisicoes, 1):
-                        if self.cancelado:
-                            break
+                anexos_elementos = await page.query_selector_all("span.attachment-file")
+                total_anexos = len(anexos_elementos)
+                if total_anexos == 0:
+                    self.requisicoes_sem_arquivos.append(req)
+                    progress_req_callback(int((idx / total_reqs) * 100))
+                    continue
 
-                        url = f"{COUPA_BASE_URL.rstrip('/')}/requisition_headers/{req.strip()}"
-                        log_callback(f"📂 Processando requisição #{req}...")
+                arquivos_salvos_no_req = 0
+                for i, an_el in enumerate(anexos_elementos, 1):
+                    if self.cancelado:
+                        break
+                    nome = await an_el.inner_text()
 
-                        try:
-                            await page.goto(url, wait_until="load", timeout=60000)
+                    if self.contem_de_acordo(nome):
+                        progress_down_callback(int((i / total_anexos) * 100))
+                        continue
 
-                            if "login" in page.url.lower():
-                                log_callback("⚠️ Realize o login no Edge se necessário...")
-                                await page.wait_for_url(lambda u: "login" not in u.lower(), timeout=300000)
-                                await page.wait_for_load_state("networkidle", timeout=15000)
+                    arquivo_temporario = os.path.join(self.pasta_download, f"temp_{nome}")
+                    try:
+                        async with page.expect_download(timeout=30000) as download_info:
+                            await an_el.click()
+                        download = await download_info.value
+                        await download.save_as(arquivo_temporario)
 
-                            try:
-                                await page.wait_for_selector("span.attachment-file", timeout=10000)
-                            except Exception as e:
-                                log_callback(f"ℹ️ Nenhum span.attachment-file encontrado para #{req}: {str(e)}")
+                        extensoes_suportadas = (".pdf", ".docx", ".xlsx", ".pptx", ".csv", ".txt")
+                        if nome.lower().endswith(extensoes_suportadas):
+                            sucesso, _ = self.analisar_arquivo(arquivo_temporario, req, nome)
+                            if sucesso:
+                                arquivos_salvos_no_req += 1
+                    except Exception as e:
+                        log_callback(f"⚠️ Erro ao baixar anexo '{nome}' da requisição #{req}: {str(e)}")
+                    finally:
+                        if os.path.exists(arquivo_temporario):
+                            os.remove(arquivo_temporario)
 
-                            anexos_elementos = await page.query_selector_all("span.attachment-file")
-                            total_anexos = len(anexos_elementos)
-                            if total_anexos == 0:
-                                self.requisicoes_sem_arquivos.append(req)
-                                progress_req_callback(int((idx / total_reqs) * 100))
-                                continue
+                    progress_down_callback(int((i / total_anexos) * 100))
 
-                            arquivos_salvos_no_req = 0
-                            for i, an_el in enumerate(anexos_elementos, 1):
-                                if self.cancelado:
-                                    break
-                                nome = await an_el.inner_text()
+                if arquivos_salvos_no_req == 0:
+                    self.requisicoes_sem_arquivos.append(req)
 
-                                if self.contem_de_acordo(nome):
-                                    progress_down_callback(int((i / total_anexos) * 100))
-                                    continue
+            except Exception as e:
+                log_callback(f"❌ Erro ao processar #{req}: {str(e)}")
+                log_callback(f"   Detalhes: {traceback.format_exc()}")
 
-                                arquivo_temporario = os.path.join(self.pasta_download, f"temp_{nome}")
-                                try:
-                                    async with page.expect_download(timeout=30000) as download_info:
-                                        await an_el.click()
-                                    download = await download_info.value
-                                    await download.save_as(arquivo_temporario)
-
-                                    extensoes_suportadas = (".pdf", ".docx", ".xlsx", ".pptx", ".csv", ".txt")
-                                    if nome.lower().endswith(extensoes_suportadas):
-                                        sucesso, _ = self.analisar_arquivo(arquivo_temporario, req, nome)
-                                        if sucesso:
-                                            arquivos_salvos_no_req += 1
-                                except Exception as e:
-                                    log_callback(f"⚠️ Erro ao baixar anexo '{nome}' da requisição #{req}: {str(e)}")
-                                finally:
-                                    if os.path.exists(arquivo_temporario):
-                                        os.remove(arquivo_temporario)
-
-                                progress_down_callback(int((i / total_anexos) * 100))
-
-                            if arquivos_salvos_no_req == 0:
-                                self.requisicoes_sem_arquivos.append(req)
-
-                        except Exception as e:
-                            log_callback(f"❌ Erro ao processar #{req}: {str(e)}")
-                            log_callback(f"   Detalhes: {traceback.format_exc()}")
-
-                        progress_req_callback(int((idx / total_reqs) * 100))
-
-                finally:
-                    if context:
-                        try:
-                            await context.close()
-                        except Exception as e:
-                            log_callback(f"ℹ️ Contexto já estava fechado: {str(e)}")
-        finally:
-            shutil.rmtree(user_data_dir, ignore_errors=True)
+            progress_req_callback(int((idx / total_reqs) * 100))
 
         return not self.cancelado
 
@@ -246,26 +252,46 @@ class DownloadWorker(QThread):
     def __init__(self, requisicoes: List[str], pasta_download: str):
         super().__init__()
         self.scraper = DownloadScraper(requisicoes, pasta_download)
+        # Melhoria 8: expõe o log_callback ao scraper para que extrair_texto
+        # possa reportar erros via UI em vez de print().
+        self.scraper._log_callback = self.log_signal.emit
 
     def run(self):
+        """Melhoria 6: try/except garante que finished_signal SEMPRE seja emitido."""
         import asyncio
+        import traceback as tb
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        sucesso = loop.run_until_complete(
-            self.scraper.run(
-                self.log_signal.emit,
-                self.progress_req_signal.emit,
-                self.progress_down_signal.emit,
+        loop = None
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            sucesso = loop.run_until_complete(
+                self.scraper.run(
+                    self.log_signal.emit,
+                    self.progress_req_signal.emit,
+                    self.progress_down_signal.emit,
+                )
             )
-        )
-        self.finished_signal.emit(
-            sucesso,
-            self.scraper.arquivos_salvos_na_execucao,
-            self.scraper.requisicoes_sem_arquivos,
-        )
-        loop.close()
+            self.finished_signal.emit(
+                sucesso,
+                self.scraper.arquivos_salvos_na_execucao,
+                self.scraper.requisicoes_sem_arquivos,
+            )
+        except Exception as e:
+            self.log_signal.emit(f"❌ ERRO CRÍTICO na thread de download: {str(e)}")
+            try:
+                self.log_signal.emit(tb.format_exc())
+            except Exception:
+                pass
+            # Garante que a UI não fique presa com botões desabilitados
+            self.finished_signal.emit(False, [], self.scraper.requisicoes_sem_arquivos)
+        finally:
+            if loop is not None:
+                try:
+                    loop.close()
+                except Exception:
+                    pass
 
-    def cancelar(self):
+    def cancelar(self) -> None:
         self.scraper.cancelado = True
 

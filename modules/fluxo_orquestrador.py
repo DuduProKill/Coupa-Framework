@@ -20,11 +20,26 @@ class ModoAutomatico:
 
     Substitui as flags _modo_automatico_2, _modo_automatico_3 etc.
     espalhadas em arquivos diferentes, evitando erros de esquecimento.
+
+    Melhoria 5: singleton real via __new__ — todas as chamadas
+    ``ModoAutomatico()`` retornam a MESMA instância, eliminando os
+    pseudo-singletons duplicados que existiam em ui_downloader,
+    ui_pdf_generator e ui_email_sender.
     """
 
+    _instancia_unica = None
+
+    def __new__(cls):
+        if cls._instancia_unica is None:
+            cls._instancia_unica = super().__new__(cls)
+        return cls._instancia_unica
+
     def __init__(self):
-        self._ativo = False
-        self._aba_origem: Optional[str] = None
+        # Guard: evita re-inicializar o estado a cada chamada do singleton
+        if not hasattr(self, "_inicializado"):
+            self._ativo = False
+            self._aba_origem: Optional[str] = None
+            self._inicializado = True
 
     def ativar(self, aba_origem: str = "Aba 1"):
         self._ativo = True
@@ -44,6 +59,16 @@ class ModoAutomatico:
 
     def __bool__(self):
         return self._ativo
+
+
+def get_modo_automatico() -> 'ModoAutomatico':
+    """Ponto de acesso único e centralizado ao singleton ModoAutomatico.
+
+    Melhoria 5: todos os widgets e o runner devem usar esta função em vez de
+    declarar o próprio atributo ``self._modo_automatico``. Assim, o estado do
+    modo automático fica consolidado em um único ponto (fluxo_orquestrador).
+    """
+    return ModoAutomatico()
 
 
 class AutomaticFlowRunner(QObject):
@@ -90,7 +115,7 @@ class AutomaticFlowRunner(QObject):
     def __init__(self, parent_framework):
         super().__init__(parent_framework)
         self.parent_fw = parent_framework
-        self._modo = ModoAutomatico()
+        self._modo = get_modo_automatico()
         self._widget_conectado = None
         self._log_callback = None
         self._reset_state()
@@ -134,13 +159,41 @@ class AutomaticFlowRunner(QObject):
     def validar_requisitos(self, abas: List[int], results: List[Dict[str, Any]]) -> List[str]:
         """Valida pré-requisitos de todas as abas selecionadas.
 
+        Deriva requisições/pedidos dos resultados da extração e delega a
+        validação de configuração para validar_pre_requisitos_abas.
+        (Melhoria 9: lógica centralizada no runner, sem duplicação na Aba 1.)
+
         Returns:
             Lista de mensagens de falha. Se vazia, todos os pré-requisitos foram atendidos.
         """
         requisicoes, pedidos = self._preparar_dados(results)
-        tem_requisicoes = bool(requisicoes)
-        tem_pedidos = bool(pedidos)
+        return self.validar_pre_requisitos_abas(
+            abas,
+            tem_requisicoes=bool(requisicoes),
+            tem_pedidos=bool(pedidos),
+        )
 
+    def validar_pre_requisitos_abas(
+        self,
+        abas: List[int],
+        tem_requisicoes: bool = True,
+        tem_pedidos: bool = True,
+    ) -> List[str]:
+        """Valida os pré-requisitos de CONFIGURAÇÃO das abas (Melhoria 9).
+
+        Usado pela Aba 1 antes da extração (open_edge_for_login), quando os
+        resultados ainda não existem — por isso recebe flags de disponibilidade
+        de dados em vez de results. A validação com os dados reais da extração
+        é feita depois, via validar_requisitos().
+
+        Args:
+            abas: Lista de números das abas a validar.
+            tem_requisicoes: Se a extração fornecerá requisições (Aba 2).
+            tem_pedidos: Se a extração fornecerá pedidos (Aba 3).
+
+        Returns:
+            Lista de falhas. Vazia se todos os pré-requisitos foram atendidos.
+        """
         tem_dados = {2: tem_requisicoes, 3: tem_pedidos, 4: True, 5: True, 6: True}
         falhas = []
 

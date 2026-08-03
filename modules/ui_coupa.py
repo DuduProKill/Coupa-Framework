@@ -194,7 +194,13 @@ class CoupaExtractorWidget(QWidget):
         if self.chk_aba6.isChecked(): abas_selecionadas.append(6)
 
         if abas_selecionadas:
-            falhas = self.validar_requisitos_fluxo(abas_selecionadas, True, True)
+            # Melhoria 9: validacao centralizada no runner, sem acoplamento parent_fw.
+            runner = AutomaticFlowRunner(self.parent_fw)
+            falhas = runner.validar_pre_requisitos_abas(
+                abas_selecionadas,
+                tem_requisicoes=True,
+                tem_pedidos=True,
+            )
             if falhas:
                 msg = "\u274c Requisitos do fluxo autom\u00e1tico n\u00e3o atendidos!\n\n"
                 msg += "Antes de iniciar a extra\u00e7\u00e3o, configure:\n\n"
@@ -219,21 +225,29 @@ class CoupaExtractorWidget(QWidget):
         self.tbl_results.setRowCount(0)
 
         self.worker = AutomationWorker(requisicoes, self.profiles[name].get("config", {}))
-        self.worker.log_signal.connect(self.txt_logs.append)
+        self.worker.log_signal.connect(self.log)  # Item 17: via UILogger em vez de txt_logs.append
         self.worker.edge_ready_signal.connect(self.edge_ready_for_login)
         self.worker.finished_signal.connect(self.automation_finished)
         self.worker.progress_signal.connect(self.progress_bar.setValue)
         self.worker.progress_signal.connect(self._on_progress)
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
+        # Item 15: cancela timer anterior para evitar que a barra suma durante nova extração
+        if hasattr(self, '_progress_hide_timer') and self._progress_hide_timer is not None:
+            self._progress_hide_timer.stop()
+            self._progress_hide_timer = None
         self.worker.start()
 
-    def _on_progress(self, value: int):
+    def _on_progress(self, value: int) -> None:
         """Atualiza visibilidade da barra de progresso."""
         self.progress_bar.setVisible(True)
         if value >= 100:
-            # Mantém visível por um momento antes de ocultar
-            QTimer.singleShot(1500, lambda: self.progress_bar.setVisible(False))
+            # Item 15: guarda referência ao timer para poder cancelá-lo se uma nova extração iniciar
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(lambda: self.progress_bar.setVisible(False))
+            timer.start(1500)
+            self._progress_hide_timer = timer
 
     def edge_ready_for_login(self):
         self.btn_confirm_login.setEnabled(True)
@@ -288,7 +302,7 @@ class CoupaExtractorWidget(QWidget):
             self.tbl_results.setItem(row, 1, QTableWidgetItem(str(item.get("pedido", "-"))))
             self.tbl_results.setItem(row, 2, QTableWidgetItem(str(item.get("fornecedor", "-"))))
             self.tbl_results.setItem(row, 3, QTableWidgetItem(str(item.get("criado_por", "-"))))
-            self.tbl_results.setItem(row, 4, QTableWidgetItem(str(item.get("destino", item.get("localidade", "-")))))
+            self.tbl_results.setItem(row, 4, QTableWidgetItem(str(item.get("localidade", "-"))))
             self.tbl_results.setItem(row, 5, QTableWidgetItem(status))
         self.tbl_results.setSortingEnabled(True)
 
@@ -303,36 +317,6 @@ class CoupaExtractorWidget(QWidget):
             self.iniciar_fluxo_automatico(results, abas_selecionadas)
         else:
             set_status(self.lbl_fluxo_status, "muted", "Status: fluxo autom\u00e1tico desabilitado. Nenhuma aba selecionada.")
-
-    def validar_requisitos_fluxo(self, abas: List[int], tem_requisicoes: bool, tem_pedidos: bool) -> List[str]:
-        aba_map = {
-            2: self.parent_fw.tab_downloader,
-            3: self.parent_fw.tab_pdf_generator,
-            4: self.parent_fw.tab_renomeador,
-            5: self.parent_fw.tab_organizador,
-            6: self.parent_fw.tab_email_sender,
-        }
-        aba_names = {
-            2: "Aba 2 - Baixador de Or\u00e7amentos",
-            3: "Aba 3 - Gerador de PDF de Pedidos",
-            4: "Aba 4 - Renomeador",
-            5: "Aba 5 - Organizador",
-            6: "Aba 6 - Disparo de E-mails",
-        }
-        tem_dados = {2: tem_requisicoes, 3: tem_pedidos, 4: True, 5: True, 6: True}
-        falhas = []
-        for aba_num in abas:
-            if aba_num not in aba_map:
-                continue
-            if not tem_dados.get(aba_num, True):
-                falhas.append(f"  \u2022 {aba_names.get(aba_num, f'Aba {aba_num}')}: sem dados da extra\u00e7\u00e3o (pulando)")
-                continue
-            widget = aba_map[aba_num]
-            if hasattr(widget, 'check_prerequisites'):
-                ok, msg = widget.check_prerequisites()
-                if not ok:
-                    falhas.append(f"  \u2022 {aba_names.get(aba_num, f'Aba {aba_num}')}: {msg}")
-        return falhas
 
     def iniciar_fluxo_automatico(self, results: list, abas: List[int]):
         """Inicia o fluxo autom\u00e1tico usando o runner centralizado do fluxo_orquestrador."""

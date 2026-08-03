@@ -45,10 +45,11 @@ var
   EdgePath: String;
 begin
   Result := True;
-  EdgePath := 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe';
+  // Item 14: caminhos dinâmicos via variáveis de ambiente em vez de hardcoded
+  EdgePath := ExpandConstant('{pf}\Microsoft\Edge\Application\msedge.exe');
   if not FileExists(EdgePath) then
   begin
-    EdgePath := 'C:\Program Files\Microsoft\Edge\Application\msedge.exe';
+    EdgePath := ExpandConstant('{pf32}\Microsoft\Edge\Application\msedge.exe');
     if not FileExists(EdgePath) then
     begin
       MsgBox(

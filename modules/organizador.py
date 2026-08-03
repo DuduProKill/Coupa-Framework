@@ -146,19 +146,15 @@ class Organizador:
         numeros = re.findall(r'\d+', texto)
         return ''.join(numeros) if numeros else texto
 
-    def buscar_arquivo_por_codigo(self, pasta: Path, codigo: str) -> list:
-        if not codigo or pasta is None:
+    def buscar_arquivo_por_codigo(self, arquivos: list, codigo: str) -> list:
+        """Busca arquivos pelo código em uma lista pré-indexada (Item 13)."""
+        if not codigo:
             return []
-        # Extrai apenas o número do código para buscar (ex: "PO nº 123456" -> "123456")
         codigo_busca = self._extrair_numero(str(codigo))
         if not codigo_busca:
             return []
         codigo_lower = codigo_busca.lower().strip()
-        resultados = []
-        for arq in pasta.rglob('*'):
-            if arq.is_file() and codigo_lower in arq.name.lower():
-                resultados.append(arq)
-        return resultados
+        return [arq for arq in arquivos if codigo_lower in arq.name.lower()]
 
     def executar(self) -> None:
         pasta_propostas = Path(self.propostas) if self.propostas else None
@@ -187,6 +183,12 @@ class Organizador:
             for i, amostra in enumerate(linhas[:3]):
                 self.log(f'    [{i+1}] RC="{amostra["rc"]}" | PO="{amostra["po"]}" | Forn="{amostra["fornecedor"]}"')
         self.log('')
+
+        # Item 13: indexa os arquivos das pastas uma única vez (O(n+m) em vez de O(n×m))
+        arquivos_propostas = list(pasta_propostas.rglob('*')) if pasta_propostas else []
+        arquivos_propostas = [a for a in arquivos_propostas if a.is_file()]
+        arquivos_pedidos = list(pasta_pedidos.rglob('*')) if pasta_pedidos else []
+        arquivos_pedidos = [a for a in arquivos_pedidos if a.is_file()]
 
         total_copiados = 0
         total_pastas_criadas = 0
@@ -218,7 +220,7 @@ class Organizador:
                 continue
 
             try:
-                propostas_encontradas = self.buscar_arquivo_por_codigo(pasta_propostas, rc) if pasta_propostas else []
+                propostas_encontradas = self.buscar_arquivo_por_codigo(arquivos_propostas, rc) if pasta_propostas else []
             except Exception as e:
                 propostas_encontradas = []
                 erro_msg = f'Erro ao buscar propostas para RC="{rc}": {str(e)}'
@@ -226,7 +228,7 @@ class Organizador:
                 self.log(f'  ⚠️ [Linha {index}] {erro_msg}')
 
             try:
-                pedidos_encontrados = self.buscar_arquivo_por_codigo(pasta_pedidos, po) if pasta_pedidos else []
+                pedidos_encontrados = self.buscar_arquivo_por_codigo(arquivos_pedidos, po) if pasta_pedidos else []
             except Exception as e:
                 pedidos_encontrados = []
                 erro_msg = f'Erro ao buscar pedidos para PO="{po}": {str(e)}'

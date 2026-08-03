@@ -39,13 +39,13 @@ if %errorlevel% neq 0 (
 )
 echo       OK
 
-echo       Removendo playwright driver (browsers nao necessarios)...
+echo       Removendo apenas browsers baixados do Playwright (usa Edge instalado)...
 if exist "dist\CoupaFramework\_internal\playwright\driver\package\.local-browsers" (
     rmdir /s /q "dist\CoupaFramework\_internal\playwright\driver\package\.local-browsers"
 )
-if exist "dist\CoupaFramework\_internal\playwright\driver\package\lib" (
-    rmdir /s /q "dist\CoupaFramework\_internal\playwright\driver\package\lib"
-)
+echo       Mantendo o driver do Playwright (necessario para controlar o Edge).
+rem A pasta lib do driver do Playwright e MANTIDA no build.
+
 echo       Removendo traducoes desnecessarias do PyQt6...
 if exist "dist\CoupaFramework\_internal\PyQt6\Qt6\translations" (
     rmdir /s /q "dist\CoupaFramework\_internal\PyQt6\Qt6\translations"
@@ -61,8 +61,14 @@ echo       OK
 
 echo [4/4] Gerando instalador com Inno Setup...
 
-set "INNO=C:\Users\eduardo.rafael\AppData\Local\Programs\Inno Setup 6\ISCC.exe"
-if not exist "%INNO%" set "INNO=C:\Program Files\Inno Setup 6\ISCC.exe"
+set "INNO="
+for %%P in (
+    "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
+    "%ProgramFiles%\Inno Setup 6\ISCC.exe"
+    "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+) do (
+    if not defined INNO if exist %%P set "INNO=%%~P"
+)
 
 if exist "%INNO%" (
     if not exist "installer_output" mkdir "installer_output"

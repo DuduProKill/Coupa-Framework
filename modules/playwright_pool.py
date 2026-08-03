@@ -9,9 +9,7 @@ Cada um consumia ~200-400MB de RAM. Agora o pool gerencia e reusa contextos.
 """
 
 import asyncio
-import os
 import threading
-from pathlib import Path
 from typing import Optional, Dict, Any
 from modules.config import resolve_edge_executable
 
@@ -31,7 +29,6 @@ class PlaywrightPool:
     def __init__(self):
         self._playwright = None
         self._contexts: Dict[str, Any] = {}
-        # amazonq-ignore-next-line
         self._ref_count: Dict[str, int] = {}
 
     @classmethod
@@ -59,7 +56,6 @@ class PlaywrightPool:
             context_key = user_data_dir
 
             if context_key in self._contexts:
-                # amazonq-ignore-next-line
                 self._ref_count[context_key] += 1
                 return self._contexts[context_key]
 
@@ -95,8 +91,8 @@ class PlaywrightPool:
             del self._contexts[context_key]
             del self._ref_count[context_key]
 
-    async def cleanup_all(self):
-        """Fecha todos os contextos e o Playwright."""
+    async def cleanup_all(self) -> None:
+        """Fecha todos os contextos e o Playwright. Chamar no encerramento do app."""
         for key in list(self._contexts.keys()):
             try:
                 await self._contexts[key].close()
@@ -110,6 +106,20 @@ class PlaywrightPool:
             except Exception:
                 pass
             self._playwright = None
+
+
+def cleanup_playwright_pool() -> None:
+    """Item 3: Utilitário síncrono para chamar cleanup_all() no closeEvent do app."""
+    import asyncio
+    pool = PlaywrightPool._instance
+    if pool is None:
+        return
+    try:
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(pool.cleanup_all())
+        loop.close()
+    except Exception:
+        pass
 
 
 class PlaywrightContextManager:
@@ -141,4 +151,55 @@ class PlaywrightContextManager:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         pool = PlaywrightPool.get_instance()
         await pool.release_context(self.user_data_dir)
+
+
+class PlaywrightContextSyncManager:
+    """Context manager para uso com 'with' (API síncrona do Playwright).
+
+    Melhoria 4: padroniza a abertura de contextos do pdf_generator.py,
+    que usava sync_playwright() diretamente, reutilizando o mesmo mecanismo
+    de nome de perfil/base do pool. Como o pool é assíncrono, este gerenciador
+    mantém o próprio ciclo de vida sync (start/stop), mas centraliza a lógica
+    de resolução do executável do Edge e a criação do contexto persistente.
+
+    Uso:
+        with PlaywrightContextSyncManager(user_data_dir="...") as context:
+            page = context.new_page()
+    """
+
+    def __init__(self, user_data_dir: str, channel: str = "msedge",
+                 headless: bool = False, **kwargs):
+        self.user_data_dir = user_data_dir
+        self.channel = channel
+        self.headless = headless
+        self.kwargs = kwargs
+        self._playwright = None
+        self._context = None
+
+    def __enter__(self):
+        from playwright.sync_api import sync_playwright
+        caminho_edge = resolve_edge_executable()
+        self._playwright = sync_playwright().start()
+        self._context = self._playwright.chromium.launch_persistent_context(
+            user_data_dir=self.user_data_dir,
+            executable_path=caminho_edge,
+            channel=self.channel,
+            headless=self.headless,
+            no_viewport=True,
+            **self.kwargs
+        )
+        return self._context
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            if self._context is not None:
+                self._context.close()
+        except Exception:
+            pass
+        try:
+            if self._playwright is not None:
+                self._playwright.stop()
+        except Exception:
+            pass
+        return False
 

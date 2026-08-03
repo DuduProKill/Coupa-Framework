@@ -1,6 +1,7 @@
 # Dados reais / sensíveis - nunca versionar
 coupa_profiles.json
 coupa_profiles.salt
+coupa_fw.secret
 historico_renomeador.csv
 Relatorio_Geracao_PDF_*.xlsx
 mapeamento_fornecedores.xlsx

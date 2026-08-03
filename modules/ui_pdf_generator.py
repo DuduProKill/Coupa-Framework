@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSlot, pyqtSignal
 
 from modules.config import PASTA_SAIDA_PADRAO_PDF
+from modules.fluxo_orquestrador import get_modo_automatico
 from modules.pdf_generator import PdfGeneratorWorker
 from modules.services.data_bus import DataBus
 from modules.logger import UILogger
@@ -24,7 +25,6 @@ class PedidoPdfGeneratorWidget(QWidget):
         - Item 19: Type hints em metodos publicos
     """
     automatico_finished = pyqtSignal(bool, str)
-    _modo_automatico_instance = None
 
     def __init__(self, parent_framework) -> None:
         super().__init__()
@@ -32,15 +32,9 @@ class PedidoPdfGeneratorWidget(QWidget):
         self.pasta_saida: str = ""
         self.worker = None
         self._user_editou_manualmente: bool = False
+        # Melhoria 5: ModoAutomatico é um singleton centralizado em
+        # fluxo_orquestrador.get_modo_automatico() — as abas compartilham a MESMA instância.
         self.init_ui()
-
-    @property
-    def _modo_automatico(self):
-        """Instancia compartilhada de ModoAutomatico (Item 9)."""
-        if PedidoPdfGeneratorWidget._modo_automatico_instance is None:
-            from modules.fluxo_orquestrador import ModoAutomatico
-            PedidoPdfGeneratorWidget._modo_automatico_instance = ModoAutomatico()
-        return PedidoPdfGeneratorWidget._modo_automatico_instance
 
     def init_ui(self) -> None:
         layout = QHBoxLayout(self)
@@ -209,9 +203,9 @@ class PedidoPdfGeneratorWidget(QWidget):
         self.bar_geral.setValue(0)
 
         if modo_automatico:
-            self._modo_automatico.ativar("Aba 3")
+            get_modo_automatico().ativar("Aba 3")
         else:
-            self._modo_automatico.desativar()
+            get_modo_automatico().desativar()
 
         self.log("🚀 Iniciando geracao de PDFs em lote...")
         self.worker = PdfGeneratorWorker(pedidos, self.pasta_saida, requisicoes_por_pedido)
@@ -230,8 +224,8 @@ class PedidoPdfGeneratorWidget(QWidget):
         self.btn_gerar.setEnabled(True)
         self.btn_cancelar.setEnabled(False)
 
-        if self._modo_automatico.ativo:
-            self._modo_automatico.desativar()
+        if get_modo_automatico().ativo:
+            get_modo_automatico().desativar()
             self.log(f"🎉 Aba 3 concluida: {resumo}")
             self.automatico_finished.emit(True, f"Aba 3 concluida: {resumo}")
         else:

@@ -5,12 +5,12 @@ from typing import Dict, Any, List
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QTextEdit, QGroupBox, QFormLayout, QFileDialog, QMessageBox, QComboBox,
-    QRadioButton, QButtonGroup
+    QRadioButton
 )
 from PyQt6.QtCore import pyqtSignal
 from modules.config import ProfileManager, MAP_FORNECEDORES, MAP_UNIDADES
 from modules.email_sender import EmailWorker, SpreadsheetCache
-from modules.fluxo_orquestrador import ModoAutomatico
+from modules.fluxo_orquestrador import get_modo_automatico
 from modules.logger import UILogger
 from modules.styles import set_status, scrollable
 import pandas as pd
@@ -36,7 +36,8 @@ class EmailSenderWidget(QWidget):
         self.results: List[Dict[str, Any]] = []
         self.email_worker = None
         self.attachment_path = ""
-        self._modo_automatico = ModoAutomatico()
+        # Melhoria 5: ModoAutomatico é um singleton centralizado em
+        # fluxo_orquestrador.get_modo_automatico() — as abas compartilham a MESMA instância.
         self.init_ui()
 
     def init_ui(self):
@@ -485,9 +486,9 @@ class EmailSenderWidget(QWidget):
         self.log(f"\U0001f680 Iniciando disparo de e-mails com perfil: {perfil_nome} via {send_mode.upper()}...")
 
         if modo_automatico:
-            self._modo_automatico.ativar("Aba 6")
+            get_modo_automatico().ativar("Aba 6")
         else:
-            self._modo_automatico.desativar()
+            get_modo_automatico().desativar()
         self.email_worker = EmailWorker(smtp_config, self.results, self.attachment_path)
         self.email_worker.log_signal.connect(self.log)
         self.email_worker.finished_signal.connect(self.envio_finalizado)
@@ -496,11 +497,10 @@ class EmailSenderWidget(QWidget):
     def envio_finalizado(self, sucesso: bool, mensagem: str):
         self.btn_enviar.setEnabled(True)
 
-        if self._modo_automatico.ativo:
-            self._modo_automatico.desativar()
+        if get_modo_automatico().ativo:
+            get_modo_automatico().desativar()
             self.log(f"\U0001f3c1 Aba 6 conclu\u00edda: {mensagem}")
             self.automatico_finished.emit(True, f"Aba 6 conclu\u00edda: {mensagem}")
         else:
             self.log(f"\U0001f3c1 {mensagem}")
             QMessageBox.information(self, "Disparo de E-mails", mensagem)
-

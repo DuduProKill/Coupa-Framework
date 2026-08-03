@@ -24,12 +24,14 @@ MAP_UNIDADES = Path(os.environ.get("MAP_UNIDADES", str(PROJECT_ROOT / "mapeament
 # Configurações do Gerador de Pedidos em PDF (Aba 3)
 PASTA_SAIDA_PADRAO_PDF = PROJECT_ROOT / "saida_pedidos_pdf"
 PERFIL_EDGE_PDF = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "GeradorPedidosCoupaFW" / "PerfilEdgeAutomacao"
+PERFIL_EDGE_DOWNLOAD = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "CoupaFramework" / "PerfilEdgeDownload"  # Item 16
+HISTORICO_RENOMEADOR = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "CoupaFramework" / "historico_renomeador.csv"  # Item 16
 URL_TESTE_LOGIN = f"{COUPA_BASE_URL}/"
 URL_BASE_IMPRESSAO_PDF = COUPA_BASE_URL + "/order_headers/show_custom/{pedido}?version=1"
 TEXTOS_SEM_DOCUMENTO = ["AGUARDE, EM PROCESSAMENTO!"]
 MARGENS_IMPRESSAO = {"top": "0.4in", "bottom": "0.4in", "left": "0.4in", "right": "0.4in"}
 
-MAX_TENTATIVAS = 1
+MAX_TENTATIVAS = 3  # Item 15: valor 1 anulava o retry; agora tenta até 3 vezes
 ESPERA_ENTRE_TENTATIVAS = 1
 
 PALAVRAS_CHAVE = ["orçamento", "orcamento", "proposta", "cotação", "cotacao", "quotation", "budget"]
@@ -51,11 +53,38 @@ DEFAULT_COUPA_PROFILE_DIR = Path.home() / "Coupa_Bot_Profile"
 
 # ---- Crypto helpers for ProfileManager ----
 
+def _get_secret() -> bytes:
+    """Retorna o segredo usado na derivação da chave de criptografia.
+
+    Melhoria 7: remove o fallback hardcoded "troque-este-valor-no-ambiente".
+    Agora:
+      1. Usa COUPA_FW_SECRET se definida no ambiente (recomendado).
+      2. Caso contrário, gera/persiste uma chave aleatória por máquina no
+         arquivo ``coupa_fw.secret`` (na raiz do projeto), evitando chave
+         previsível e conhecida publicamente.
+    """
+    secret_env = os.environ.get("COUPA_FW_SECRET")
+    if secret_env:
+        return secret_env.encode("utf-8")
+
+    secret_file = PROJECT_ROOT / "coupa_fw.secret"
+    try:
+        if secret_file.exists():
+            return secret_file.read_bytes()
+        secret = os.urandom(32)
+        secret_file.write_bytes(secret)
+        return secret
+    except OSError:
+        # Se não conseguir persistir, gera uma chave efêmera (perde acesso
+        # aos dados criptografados anteriormente, mas não usa segredo fixo).
+        return os.urandom(32)
+
+
 def _derive_key(salt: bytes) -> bytes:
     """Deriva uma chave AES a partir de um salt fixo + identificador da máquina."""
     machine_id = os.environ.get("COMPUTERNAME", "DEFAULT-MACHINE").encode("utf-8")
-    # Defina COUPA_FW_SECRET no ambiente pra não depender do fallback abaixo.
-    secret = os.environ.get("COUPA_FW_SECRET", "troque-este-valor-no-ambiente").encode("utf-8")
+    # Melhoria 7: usa COUPA_FW_SECRET ou chave aleatória persistente por máquina.
+    secret = _get_secret()
     # amazonq-ignore-next-line
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
@@ -66,7 +95,7 @@ def _derive_key(salt: bytes) -> bytes:
     return base64.urlsafe_b64encode(kdf.derive(secret))
 
 
-def _get_fernet() -> Fernet:
+def _get_fernet() -> 'Fernet':
     salt_file = CONFIG_FILE.with_suffix(".salt")
     if salt_file.exists():
         salt = salt_file.read_bytes()

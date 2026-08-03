@@ -1,5 +1,6 @@
 import os
 import re
+import threading
 import time
 import pandas as pd
 import smtplib
@@ -20,10 +21,12 @@ class SpreadsheetCache:
 
     Evita recarregar as mesmas planilhas a cada execução do EmailWorker.
     Se o arquivo não foi modificado desde o último carregamento, retorna os dados em cache.
+    Thread-safe via threading.Lock (Item 14).
     """
     _instance = None
     _cache: Dict[str, Tuple[float, Any]] = {}
     _max_size = 10
+    _lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
@@ -32,9 +35,10 @@ class SpreadsheetCache:
 
     def get(self, caminho: str) -> Optional[Any]:
         """Retorna dados do cache se o arquivo não foi modificado."""
-        if caminho not in self._cache:
-            return None
-        timestamp, data = self._cache[caminho]
+        with self._lock:
+            if caminho not in self._cache:
+                return None
+            timestamp, data = self._cache[caminho]
         try:
             mtime = os.path.getmtime(caminho)
             if mtime <= timestamp:
@@ -43,28 +47,30 @@ class SpreadsheetCache:
             pass
         return None
 
-    def set(self, caminho: str, data: Any):
+    def set(self, caminho: str, data: Any) -> None:
         """Armazena dados em cache com timestamp atual."""
         try:
             timestamp = os.path.getmtime(caminho)
         except OSError:
             timestamp = time.time()
 
-        if len(self._cache) >= self._max_size:
-            oldest = next(iter(self._cache))
-            del self._cache[oldest]
+        with self._lock:
+            if len(self._cache) >= self._max_size:
+                oldest = next(iter(self._cache))
+                del self._cache[oldest]
+            self._cache[caminho] = (timestamp, data)
 
-        self._cache[caminho] = (timestamp, data)
-
-    def invalidate(self, caminho: Optional[str] = None):
+    def invalidate(self, caminho: Optional[str] = None) -> None:
         """Invalida cache de um arquivo específico ou de todos."""
-        if caminho:
-            self._cache.pop(caminho, None)
-        else:
-            self._cache.clear()
+        with self._lock:
+            if caminho:
+                self._cache.pop(caminho, None)
+            else:
+                self._cache.clear()
 
-    def clear(self):
-        self._cache.clear()
+    def clear(self) -> None:
+        with self._lock:
+            self._cache.clear()
 
 try:
     import win32com.client
@@ -154,15 +160,14 @@ class EmailWorker(QThread):
         if not email_columns:
             return ""
         candidate_columns = [c for c in df.columns if c not in email_columns]
-        for _, row in df.iterrows():
-            for col in candidate_columns:
-                valor = str(row.get(col, "") or "").strip().lower()
-                if not valor:
-                    continue
-                if term_norm in valor or valor in term_norm:
-                    email = str(row.get(email_columns[0], "") or "").strip()
-                    if email:
-                        return email
+        # Item 12: vetorizado com pandas em vez de iterrows()
+        for col in candidate_columns:
+            col_lower = df[col].astype(str).str.strip().str.lower()
+            mask = col_lower.str.contains(term_norm, regex=False, na=False) | col_lower.apply(lambda v: bool(v) and v in term_norm)
+            matches = df.loc[mask, email_columns[0]].dropna()
+            matches = matches[matches.astype(str).str.strip() != ""]
+            if not matches.empty:
+                return str(matches.iloc[0]).strip()
         return ""
 
     def _find_supplier_email(self, fornecedor: str) -> str:

@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSlot, QThread, pyqtSignal
 
 from modules.download_scraper import DownloadWorker
+from modules.fluxo_orquestrador import get_modo_automatico
 from modules.services.data_bus import DataBus
 from modules.logger import UILogger
 from modules.styles import set_status, scrollable
@@ -14,22 +15,15 @@ from modules.styles import set_status, scrollable
 
 class OrcamentoDownloaderWidget(QWidget):
     automatico_finished = pyqtSignal(bool, str)
-    _modo_automatico_instance = None
 
     def __init__(self, parent_framework):
         super().__init__()
         self.parent_fw = parent_framework
         self.pasta_download = ""
         self.worker = None
+        # Melhoria 5: ModoAutomatico é um singleton centralizado em
+        # fluxo_orquestrador.get_modo_automatico() — as abas compartilham a MESMA instância.
         self.init_ui()
-
-    @property
-    def _modo_automatico(self):
-        """Instancia compartilhada de ModoAutomatico (Item 9)."""
-        if OrcamentoDownloaderWidget._modo_automatico_instance is None:
-            from modules.fluxo_orquestrador import ModoAutomatico
-            OrcamentoDownloaderWidget._modo_automatico_instance = ModoAutomatico()
-        return OrcamentoDownloaderWidget._modo_automatico_instance
 
     def init_ui(self):
         layout = QHBoxLayout(self)
@@ -131,17 +125,17 @@ class OrcamentoDownloaderWidget(QWidget):
         self.txt_req_list.setStyleSheet("border: 2px solid #4ade80;")
         QTimer.singleShot(1500, lambda: self.txt_req_list.setStyleSheet(""))
 
-    def selecionar_pasta(self):
+    def selecionar_pasta(self) -> None:
         pasta = QFileDialog.getExistingDirectory(self, "Selecione a pasta onde os arquivos serao salvos")
         if pasta:
             self.pasta_download = os.path.normpath(pasta)
             set_status(self.lbl_pasta, "normal", self.pasta_download)
 
-    def limpar_pasta(self):
+    def limpar_pasta(self) -> None:
         self.pasta_download = ""
         set_status(self.lbl_pasta, "muted", "Nenhuma pasta selecionada")
 
-    def _marcar_edicao_manual(self):
+    def _marcar_edicao_manual(self) -> None:
         if self.txt_req_list.hasFocus():
             self._user_editou_manualmente = True
 
@@ -161,7 +155,7 @@ class OrcamentoDownloaderWidget(QWidget):
             return
         self.executar_downloads(modo_automatico=True)
 
-    def executar_downloads(self, modo_automatico=False):
+    def executar_downloads(self, modo_automatico: bool = False) -> None:
         if not self.pasta_download:
             if not modo_automatico:
                 QMessageBox.warning(self, "Erro", "Selecione uma pasta de destino antes de comecar!")
@@ -186,9 +180,9 @@ class OrcamentoDownloaderWidget(QWidget):
         self.bar_downloads.setValue(0)
 
         if modo_automatico:
-            self._modo_automatico.ativar("Aba 2")
+            get_modo_automatico().ativar("Aba 2")
         else:
-            self._modo_automatico.desativar()
+            get_modo_automatico().desativar()
 
         self.log("\U0001f680 Iniciando processador de downloads em lote...")
         self.worker = DownloadWorker(requisicoes, self.pasta_download)
@@ -198,7 +192,7 @@ class OrcamentoDownloaderWidget(QWidget):
         self.worker.finished_signal.connect(self.processo_finalizado)
         self.worker.start()
 
-    def cancelar_downloads(self):
+    def cancelar_downloads(self) -> None:
         if self.worker:
             self.worker.cancelar()
             self.log("\U0001f6d1 Solicitacao de cancelamento enviada...")
@@ -218,12 +212,12 @@ class OrcamentoDownloaderWidget(QWidget):
 
         if not sucesso:
             self.log("\U0001f6d1 Operacao cancelada pelo usuario.")
-            if not self._modo_automatico.ativo:
+            if not get_modo_automatico().ativo:
                 QMessageBox.information(self, "Cancelado", "O processo de download foi cancelado.")
             return
 
-        if self._modo_automatico.ativo:
-            self._modo_automatico.desativar()
+        if get_modo_automatico().ativo:
+            get_modo_automatico().desativar()
             resumo = f"\U0001f3c1 Aba 2 concluida: {len(salvos)} orcamento(s) salvo(s)."
             if sem_arquivos:
                 resumo += f" | \u26a0\ufe0f {len(sem_arquivos)} requisicoes sem arquivos."

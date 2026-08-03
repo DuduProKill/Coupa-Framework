@@ -100,7 +100,7 @@ class OrganizadorWidget(QWidget):
         widget.setLayout(h_layout)
         return widget
 
-    def log(self, msg):
+    def log(self, msg: str) -> None:
         UILogger.auto(self.log_area, msg)
 
     def check_prerequisites(self) -> tuple:
@@ -133,7 +133,7 @@ class OrganizadorWidget(QWidget):
             return True
         return Path(caminho).is_dir()
 
-    def processar(self, modo_automatico=False):
+    def processar(self, modo_automatico: bool = False) -> None:
         try:
             propostas = self._strip_path(self.ent_propostas.text())
             pedidos = self._strip_path(self.ent_pedidos.text())

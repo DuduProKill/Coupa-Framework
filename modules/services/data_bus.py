@@ -18,6 +18,7 @@ Uso:
 """
 
 import re
+import threading
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -27,32 +28,38 @@ class DataBus:
 
     Attributes:
         _store: Dicionario interno de dados compartilhados.
+        _lock: Lock para acesso thread-safe a partir de QThreads (Item 14).
     """
 
     _store: Dict[str, Any] = {}
+    _lock = threading.Lock()
 
     @classmethod
     def store(cls, key: str, value: Any) -> None:
         """Armazena um valor no barramento."""
-        cls._store[key] = value
+        with cls._lock:
+            cls._store[key] = value
 
     @classmethod
     def get(cls, key: str, default: Any = None) -> Any:
         """Recupera um valor do barramento."""
-        return cls._store.get(key, default)
+        with cls._lock:
+            return cls._store.get(key, default)
 
     @classmethod
     def clear(cls, key: Optional[str] = None) -> None:
         """Limpa um item especifico ou todo o barramento."""
-        if key:
-            cls._store.pop(key, None)
-        else:
-            cls._store.clear()
+        with cls._lock:
+            if key:
+                cls._store.pop(key, None)
+            else:
+                cls._store.clear()
 
     @classmethod
     def has(cls, key: str) -> bool:
         """Verifica se uma chave existe no barramento."""
-        return key in cls._store
+        with cls._lock:
+            return key in cls._store
 # amazonq-ignore-next-line
 
     # --- Metodos de conveniencia para dados de extracao ---
