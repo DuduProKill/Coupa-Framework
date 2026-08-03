@@ -81,14 +81,7 @@ echo       Encontrado: %INSTALLER%
 
 echo.
 echo [5/5] Publicando release no GitHub...
-gh release create "v%VERSION%" "%INSTALLER%" ^
-    --title "Coupa Framework v%VERSION%" ^
-    --notes "## Coupa Framework v%VERSION%^^
-
-### Instalacao
-Baixe o arquivo **CoupaFramework_Setup_v%VERSION%.exe** e execute.^^
-Se ja tiver uma versao instalada, o instalador atualiza automaticamente." ^
-    --latest
+gh release create "v%VERSION%" "%INSTALLER%" --title "Coupa Framework v%VERSION%" --notes "Versao v%VERSION%. Baixe o instalador e execute. Se ja tiver instalado, atualiza automaticamente." --latest
 if %errorlevel% neq 0 (
     echo [ERRO] Falha ao publicar release no GitHub.
     pause
