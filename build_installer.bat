@@ -86,16 +86,6 @@ if defined INNO (
     echo       OK
 
     echo.
-    echo       Gerando checksum SHA-256 do instalador...
-    for %%F in (installer_output\CoupaFramework_Setup_*.exe) do (
-        certutil -hashfile "%%F" SHA256 > "installer_output\%%~nF.sha256.txt" 2>&1
-        echo       Checksum salvo em: installer_output\%%~nF.sha256.txt
-        echo       Compactando para upload no GitHub Releases...
-        tar -a -c -f "installer_output\%%~nF.zip" -C installer_output "%%~nxF"
-        echo       ZIP gerado em: installer_output\%%~nF.zip
-    )
-
-    echo.
     echo ============================================================
     echo  SUCESSO! Instalador gerado em: installer_output\
     echo ============================================================
