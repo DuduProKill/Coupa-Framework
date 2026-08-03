@@ -1,5 +1,4 @@
 import sys
-import threading
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QTabWidget, QStatusBar,
     QLabel, QVBoxLayout, QWidget
@@ -12,6 +11,7 @@ from modules import (
 )
 from modules.styles import APP_STYLESHEET
 from modules.playwright_pool import cleanup_playwright_pool
+from modules.updater import UpdateManager
 
 class FrameworkApp(QMainWindow):
     def __init__(self):
@@ -91,17 +91,13 @@ class FrameworkApp(QMainWindow):
         # Conectar troca de aba para atualizar status
         self.tab_widget.currentChanged.connect(self._on_tab_changed)
 
-        # Verifica atualizações em background (não trava a abertura)
-        threading.Thread(target=self._check_updates, daemon=True).start()
-
-    def _check_updates(self):
-        from modules.updater import check_for_updates
-        check_for_updates(self)
-
-        # Sincronizar perfis entre abas: qdo alterado no Gerenciar Perfis,
-        # atualiza automaticamente os combos da Aba 1 (Extrator) e Aba 6 (E-mail)
+        # Sincronizar perfis entre abas
         self.tab_manage_profiles.profiles_changed.connect(self.tab_coupa.refresh_profiles)
         self.tab_manage_profiles.profiles_changed.connect(self.tab_email_sender.refresh_profiles)
+
+        # Verifica atualizações em background via QThread (UI sempre na thread principal)
+        self._update_manager = UpdateManager(self)
+        self._update_manager.start()
 
     def _on_tab_changed(self, index: int):
         tab_text = self.tab_widget.tabText(index).strip()
