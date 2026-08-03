@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import QMessageBox, QProgressDialog, QApplication
 from PyQt6.QtCore import Qt
 
 GITHUB_REPO = "DuduProKill/Coupa-Framework"
-CURRENT_VERSION = "1.1.0"
+CURRENT_VERSION = "1.1.1"
 
 
 def _fetch_latest() -> tuple[str, str] | None:
