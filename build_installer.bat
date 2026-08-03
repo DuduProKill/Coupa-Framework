@@ -1,5 +1,6 @@
 @echo off
 title Build - Coupa Framework
+setlocal EnableDelayedExpansion
 
 echo ============================================================
 echo  Coupa Framework - Build do Instalador (4 etapas)
@@ -23,7 +24,12 @@ if %errorlevel% neq 0 (
 echo       OK
 
 echo [2/4] Instalando dependencias do projeto...
-py -m pip install -r requirements.txt > nul 2>&1
+py -m pip install -r requirements.txt
+if %errorlevel% neq 0 (
+    echo [ERRO] Falha ao instalar dependencias. Veja os erros acima.
+    pause
+    exit /b 1
+)
 echo       OK
 
 echo [3/4] Compilando o executavel com PyInstaller...
@@ -44,7 +50,6 @@ if exist "dist\CoupaFramework\_internal\playwright\driver\package\.local-browser
     rmdir /s /q "dist\CoupaFramework\_internal\playwright\driver\package\.local-browsers"
 )
 echo       Mantendo o driver do Playwright (necessario para controlar o Edge).
-rem A pasta lib do driver do Playwright e MANTIDA no build.
 
 echo       Removendo traducoes desnecessarias do PyQt6...
 if exist "dist\CoupaFramework\_internal\PyQt6\Qt6\translations" (
@@ -70,7 +75,7 @@ for %%P in (
     if not defined INNO if exist %%P set "INNO=%%~P"
 )
 
-if exist "%INNO%" (
+if defined INNO (
     if not exist "installer_output" mkdir "installer_output"
     "%INNO%" installer.iss
     if %errorlevel% neq 0 (
@@ -79,6 +84,14 @@ if exist "%INNO%" (
         exit /b 1
     )
     echo       OK
+
+    echo.
+    echo       Gerando checksum SHA-256 do instalador...
+    for %%F in (installer_output\CoupaFramework_Setup_*.exe) do (
+        certutil -hashfile "%%F" SHA256 > "installer_output\%%~nF.sha256.txt" 2>&1
+        echo       Checksum salvo em: installer_output\%%~nF.sha256.txt
+    )
+
     echo.
     echo ============================================================
     echo  SUCESSO! Instalador gerado em: installer_output\

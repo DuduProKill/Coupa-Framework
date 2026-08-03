@@ -1,10 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec para Coupa Framework - Automação de Suprimentos
 
-import sys
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
-
-block_cipher = None
 
 datas = []
 datas += collect_data_files('fitz')          # PyMuPDF
@@ -61,7 +58,7 @@ a = Analysis(
         'tkinter',
         'matplotlib',
         'scipy',
-        'numpy.testing',
+        'numpy',           # não usado diretamente; pandas traz o necessário
         'IPython',
         'jupyter',
         'notebook',
@@ -81,11 +78,10 @@ a = Analysis(
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
-    cipher=block_cipher,
     noarchive=False,
 )
 
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure, a.zipped_data)
 
 exe = EXE(
     pyz,
@@ -97,7 +93,15 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,          # Sem janela de console
+    # UPX pode corromper DLLs do Qt e do Playwright — excluir explicitamente
+    upx_exclude=[
+        'Qt6*.dll',
+        'PyQt6*.dll',
+        '*.pyd',
+        'node.exe',          # driver do Playwright
+        'msedge*.dll',
+    ],
+    console=False,           # Sem janela de console
     disable_windowed_traceback=False,
     target_arch=None,
     codesign_identity=None,
@@ -111,6 +115,12 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=True,
-    upx_exclude=[],
+    upx_exclude=[
+        'Qt6*.dll',
+        'PyQt6*.dll',
+        '*.pyd',
+        'node.exe',
+        'msedge*.dll',
+    ],
     name='CoupaFramework',
 )
