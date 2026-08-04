@@ -1,5 +1,6 @@
 import os
 from typing import Any, Dict
+import logging
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
@@ -9,6 +10,8 @@ from PyQt6.QtCore import pyqtSignal
 
 from modules.config import ProfileManager
 from modules.styles import set_status, scrollable
+
+logger = logging.getLogger(__name__)
 
 
 class ProfileManagerWidget(QWidget):
@@ -114,7 +117,7 @@ class ProfileManagerWidget(QWidget):
             self.load_selected_profile(self.combo_profiles.currentText())
         else:
             self.clear_form()
-            self.update_status("Nenhum perfil cadastrado.")
+            self.update_status("Nenhum perfil cadastrado. Cadastre um para começar.")
 
     def load_selected_profile(self, name: str):
         if not name or name not in self.profiles:
@@ -132,7 +135,7 @@ class ProfileManagerWidget(QWidget):
         self.chk_destino.setChecked(profile.get("destino", False))
         self.txt_comprador_email.setText(profile.get("comprador_email", ""))
         self.txt_template.setPlainText(profile.get("template", ""))
-        self.update_status(f"Perfil '{name}' carregado.")
+        self.update_status(f"Perfil '{name}' carregado. Revise os dados antes de salvar.")
 
     def clear_form(self):
         self.current_profile = None
@@ -166,6 +169,10 @@ class ProfileManagerWidget(QWidget):
             "template": self.txt_template.toPlainText().strip(),
         }
 
+        if self.txt_comprador_email.text().strip() and ";" not in self.txt_comprador_email.text().strip() and "," not in self.txt_comprador_email.text().strip():
+            self.update_status("Use ; ou , para separar múltiplos e-mails do comprador.")
+            return
+
         if self.current_profile and self.current_profile != name and name in self.profiles:
             QMessageBox.warning(self, "Aviso", "Já existe um perfil com esse nome.")
             return
@@ -174,7 +181,12 @@ class ProfileManagerWidget(QWidget):
             del self.profiles[self.current_profile]
 
         self.profiles[name] = {"config": config}
-        ProfileManager.save_profiles(self.profiles)
+        try:
+            ProfileManager.save_profiles(self.profiles)
+        except Exception as exc:
+            logger.exception("Falha ao salvar perfil %s", name)
+            QMessageBox.critical(self, "Erro", f"Não foi possível salvar o perfil: {exc}")
+            return
         self.load_profiles()
         self.combo_profiles.setCurrentText(name)
         self.update_status(f"Perfil '{name}' salvo com sucesso.")
@@ -197,7 +209,12 @@ class ProfileManagerWidget(QWidget):
 
         if name in self.profiles:
             del self.profiles[name]
-            ProfileManager.save_profiles(self.profiles)
+            try:
+                ProfileManager.save_profiles(self.profiles)
+            except Exception as exc:
+                logger.exception("Falha ao excluir perfil %s", name)
+                QMessageBox.critical(self, "Erro", f"Não foi possível excluir o perfil: {exc}")
+                return
             self.load_profiles()
             self.update_status(f"Perfil '{name}' excluído.")
             self.profiles_changed.emit()

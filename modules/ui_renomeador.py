@@ -1,4 +1,5 @@
 import csv
+import logging
 import os
 import re
 import shutil
@@ -12,8 +13,11 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSignal, QThread
 from modules.logger import UILogger
 from modules.config import HISTORICO_RENOMEADOR
+from modules.services.renomeador_service import RenomeadorService
 import fitz
 from filelock import FileLock, Timeout
+
+logger = logging.getLogger(__name__)
 
 
 class PDFCache:
@@ -244,11 +248,14 @@ class RenomeadorWidget(QWidget):
                 continue
 
             try:
-                shutil.copy2(origem, backup_folder)
-                os.rename(origem, destino)
-                self.table.setItem(row, 5, QTableWidgetItem("\u2705 Renomeado"))
-                self.salvar_historico(arquivo, novo_nome, "OK")
-                renomeados += 1
+                ok, status = RenomeadorService.renomear_arquivo(origem, destino, backup_folder)
+                if ok:
+                    self.table.setItem(row, 5, QTableWidgetItem("✅ Renomeado"))
+                    self.salvar_historico(arquivo, novo_nome, "OK")
+                    renomeados += 1
+                else:
+                    self.table.setItem(row, 5, QTableWidgetItem(f"⚠️ {status}"))
+                    self.salvar_historico(arquivo, novo_nome, f"Erro: {status}")
             except Exception as e:
                 self.table.setItem(row, 5, QTableWidgetItem(f"\u274c {str(e)}"))
                 self.salvar_historico(arquivo, novo_nome, f"Erro: {str(e)}")
@@ -276,7 +283,7 @@ class RenomeadorWidget(QWidget):
                         status
                     ])
         except Timeout:
-            print(f"[AVISO] Nao foi possivel travar o arquivo de historico: {lock_path}")
+            logger.warning("Nao foi possivel travar o arquivo de historico: %s", lock_path)
             # Fallback: escreve sem lock para evitar perda de dados
             existe = self.historico_path.exists()
             with open(self.historico_path, 'a', newline='', encoding='utf-8') as f:
@@ -291,29 +298,10 @@ class RenomeadorWidget(QWidget):
                 ])
 
     def limpar_texto(self, texto: str) -> str:
-        texto = texto.strip()
-        texto = re.sub(r'[\\/:*?"<>|]', "", texto)
-        texto = re.sub(r"\s+", " ", texto)
-        return texto
+        return RenomeadorService.limpar_texto(texto)
 
     def gerar_nome_arquivo(self, id_coupa: str, fornecedor: str, unidade_entrega: str = "") -> str:
-        fornecedor = self.limpar_texto(fornecedor)
-        unidade_entrega = self.limpar_texto(unidade_entrega)
-        if unidade_entrega:
-            base = f"PO {id_coupa} - {fornecedor} - {unidade_entrega}"
-        else:
-            base = f"PO {id_coupa} - {fornecedor}"
-        nome = f"{base}.pdf"
-        max_len = 180
-        if len(nome) <= max_len:
-            return nome
-
-        if unidade_entrega:
-            unidade_entrega = unidade_entrega[: max_len - len(f"PO {id_coupa} - {fornecedor} - ")].rstrip()
-            return f"PO {id_coupa} - {fornecedor} - {unidade_entrega}.pdf"
-        else:
-            fornecedor = fornecedor[: max_len - len(f"PO {id_coupa} - ")].rstrip()
-            return f"PO {id_coupa} - {fornecedor}.pdf"
+        return RenomeadorService.gerar_nome_arquivo(id_coupa, fornecedor, unidade_entrega)
 
     def normalizar_fornecedor(self, texto: str) -> str:
         texto = self.limpar_texto(texto)

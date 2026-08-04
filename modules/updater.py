@@ -1,10 +1,13 @@
+import logging
 import subprocess
 import tempfile
 from typing import Optional
+
 import requests
-from PyQt6.QtCore import QThread, pyqtSignal, QObject
-from PyQt6.QtWidgets import QMessageBox, QProgressDialog, QApplication
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QObject, Qt, QThread, pyqtSignal
+from PyQt6.QtWidgets import QApplication, QMessageBox, QProgressDialog
+
+logger = logging.getLogger(__name__)
 
 GITHUB_REPO = "DuduProKill/Coupa-Framework"
 CURRENT_VERSION = "1.1.1"
@@ -23,6 +26,13 @@ def _normalize_version(value: str) -> Optional[tuple[int, int, int]]:
         return None
 
 
+def _format_version_label(version: str) -> str:
+    normalized = (version or "").strip()
+    if not normalized:
+        return ""
+    return normalized if normalized.startswith("v") else f"v{normalized}"
+
+
 def _is_newer_version(latest_tag: str, current_version: str) -> bool:
     latest = _normalize_version(latest_tag)
     current = _normalize_version(current_version)
@@ -36,25 +46,30 @@ class _CheckThread(QThread):
 
     def run(self):
         try:
-            r = requests.get(
+            response = requests.get(
                 f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
                 timeout=5,
                 headers={"Accept": "application/vnd.github+json"},
             )
-            if r.status_code != 200:
-                return
-            data = r.json()
+            response.raise_for_status()
+            data = response.json()
             tag = data.get("tag_name", "")
             if not tag or not _is_newer_version(tag, CURRENT_VERSION):
                 return
             asset_url = next(
-                (a["browser_download_url"] for a in data.get("assets", []) if a["name"].endswith(".exe")),
+                (
+                    asset.get("browser_download_url")
+                    for asset in data.get("assets", [])
+                    if isinstance(asset, dict) and asset.get("name", "").endswith(".exe")
+                ),
                 None,
             )
             if asset_url:
                 self.update_found.emit(tag, asset_url)
-        except Exception:
-            pass
+        except requests.RequestException as exc:
+            logger.exception("Falha ao verificar atualização no GitHub: %s", exc)
+        except ValueError as exc:
+            logger.exception("Resposta inválida da API do GitHub: %s", exc)
 
 
 class _DownloadThread(QThread):
@@ -68,19 +83,29 @@ class _DownloadThread(QThread):
 
     def run(self):
         try:
-            r = requests.get(self._url, stream=True, timeout=60)
-            total = int(r.headers.get("content-length", 0))
+            response = requests.get(self._url, stream=True, timeout=60)
+            response.raise_for_status()
+            total = int(response.headers.get("content-length", 0) or 0)
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".exe")
-            downloaded = 0
-            for chunk in r.iter_content(chunk_size=8192):
-                tmp.write(chunk)
-                downloaded += len(chunk)
-                if total:
-                    self.progress.emit(int(downloaded * 100 / total))
-            tmp.close()
+            try:
+                downloaded = 0
+                for chunk in response.iter_content(chunk_size=8192):
+                    if not chunk:
+                        continue
+                    tmp.write(chunk)
+                    downloaded += len(chunk)
+                    if total:
+                        self.progress.emit(int(downloaded * 100 / total))
+                tmp.flush()
+            finally:
+                tmp.close()
             self.finished.emit(tmp.name)
-        except Exception as e:
-            self.error.emit(str(e))
+        except requests.RequestException as exc:
+            logger.exception("Falha ao baixar atualização: %s", exc)
+            self.error.emit(str(exc))
+        except OSError as exc:
+            logger.exception("Falha ao gravar arquivo temporário da atualização: %s", exc)
+            self.error.emit(str(exc))
 
 
 class UpdateManager(QObject):
@@ -97,9 +122,11 @@ class UpdateManager(QObject):
     def _on_update_found(self, latest_tag: str, asset_url: str):
         msg = QMessageBox(self._parent_widget)
         msg.setWindowTitle("Atualização disponível")
+        latest_label = _format_version_label(latest_tag)
+        current_label = _format_version_label(CURRENT_VERSION)
         msg.setText(
-            f"Nova versão disponível: <b>v{latest_tag}</b><br>"
-            f"Versão atual: v{CURRENT_VERSION}<br><br>"
+            f"Nova versão disponível: <b>{latest_label}</b><br>"
+            f"Versão atual: {current_label}<br><br>"
             "Deseja atualizar agora? O aplicativo será fechado automaticamente."
         )
         msg.setIcon(QMessageBox.Icon.Information)

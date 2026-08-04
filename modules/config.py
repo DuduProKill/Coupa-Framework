@@ -1,6 +1,7 @@
 import json
 import os
 import base64
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Any, Optional
 from cryptography.fernet import Fernet
@@ -15,26 +16,50 @@ except ImportError:
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_FILE = PROJECT_ROOT / "coupa_profiles.json"
-# Defina COUPA_BASE_URL no ambiente (ou num .env local, nunca commitado) com a
-# URL real da sua instância Coupa. Sem isso, cai num placeholder que não aponta pra lugar nenhum.
-COUPA_BASE_URL = os.environ.get("COUPA_BASE_URL", "https://sua-instancia.coupahost.com")
-MAP_FORNECEDORES = Path(os.environ.get("MAP_FORNECEDORES", str(PROJECT_ROOT / "mapeamento_fornecedores.xlsx")))
-MAP_UNIDADES = Path(os.environ.get("MAP_UNIDADES", str(PROJECT_ROOT / "mapeamento_unidades.xlsx")))
 
-# Configurações do Gerador de Pedidos em PDF (Aba 3)
-PASTA_SAIDA_PADRAO_PDF = PROJECT_ROOT / "saida_pedidos_pdf"
-PERFIL_EDGE_PDF = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "GeradorPedidosCoupaFW" / "PerfilEdgeAutomacao"
-PERFIL_EDGE_DOWNLOAD = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "CoupaFramework" / "PerfilEdgeDownload"  # Item 16
-HISTORICO_RENOMEADOR = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "CoupaFramework" / "historico_renomeador.csv"  # Item 16
-URL_TESTE_LOGIN = f"{COUPA_BASE_URL}/"
-URL_BASE_IMPRESSAO_PDF = COUPA_BASE_URL + "/order_headers/show_custom/{pedido}?version=1"
-TEXTOS_SEM_DOCUMENTO = ["AGUARDE, EM PROCESSAMENTO!"]
-MARGENS_IMPRESSAO = {"top": "0.4in", "bottom": "0.4in", "left": "0.4in", "right": "0.4in"}
 
-MAX_TENTATIVAS = 3  # Item 15: valor 1 anulava o retry; agora tenta até 3 vezes
-ESPERA_ENTRE_TENTATIVAS = 1
+@dataclass(frozen=True)
+class FrameworkSettings:
+    """Configuração centralizada do framework com defaults seguros e tipados."""
 
-PALAVRAS_CHAVE = ["orçamento", "orcamento", "proposta", "cotação", "cotacao", "quotation", "budget"]
+    project_root: Path = PROJECT_ROOT
+    config_file: Path = CONFIG_FILE
+    coupa_base_url: str = os.environ.get("COUPA_BASE_URL", "https://sua-instancia.coupahost.com")
+    map_fornecedores: Path = field(default_factory=lambda: Path(os.environ.get("MAP_FORNECEDORES", str(PROJECT_ROOT / "mapeamento_fornecedores.xlsx"))))
+    map_unidades: Path = field(default_factory=lambda: Path(os.environ.get("MAP_UNIDADES", str(PROJECT_ROOT / "mapeamento_unidades.xlsx"))))
+    pasta_saida_padrao_pdf: Path = field(default_factory=lambda: PROJECT_ROOT / "saida_pedidos_pdf")
+    perfil_edge_pdf: Path = field(default_factory=lambda: Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "GeradorPedidosCoupaFW" / "PerfilEdgeAutomacao")
+    perfil_edge_download: Path = field(default_factory=lambda: Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "CoupaFramework" / "PerfilEdgeDownload")
+    historico_renomeador: Path = field(default_factory=lambda: Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "CoupaFramework" / "historico_renomeador.csv")
+    url_teste_login: str = ""
+    url_base_impressao_pdf: str = ""
+    textos_sem_documento: tuple[str, ...] = ("AGUARDE, EM PROCESSAMENTO!",)
+    margens_impressao: Dict[str, str] = field(default_factory=lambda: {"top": "0.4in", "bottom": "0.4in", "left": "0.4in", "right": "0.4in"})
+    max_tentativas: int = 3
+    espera_entre_tentativas: int = 1
+    palavras_chave: tuple[str, ...] = ("orçamento", "orcamento", "proposta", "cotação", "cotacao", "quotation", "budget")
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "url_teste_login", f"{self.coupa_base_url.rstrip('/')}/")
+        object.__setattr__(self, "url_base_impressao_pdf", f"{self.coupa_base_url.rstrip('/')}/order_headers/show_custom/{{pedido}}?version=1")
+
+
+SETTINGS = FrameworkSettings()
+
+COUPA_BASE_URL = SETTINGS.coupa_base_url
+MAP_FORNECEDORES = SETTINGS.map_fornecedores
+MAP_UNIDADES = SETTINGS.map_unidades
+PASTA_SAIDA_PADRAO_PDF = SETTINGS.pasta_saida_padrao_pdf
+PERFIL_EDGE_PDF = SETTINGS.perfil_edge_pdf
+PERFIL_EDGE_DOWNLOAD = SETTINGS.perfil_edge_download
+HISTORICO_RENOMEADOR = SETTINGS.historico_renomeador
+URL_TESTE_LOGIN = SETTINGS.url_teste_login
+URL_BASE_IMPRESSAO_PDF = SETTINGS.url_base_impressao_pdf
+TEXTOS_SEM_DOCUMENTO = SETTINGS.textos_sem_documento
+MARGENS_IMPRESSAO = SETTINGS.margens_impressao
+MAX_TENTATIVAS = SETTINGS.max_tentativas
+ESPERA_ENTRE_TENTATIVAS = SETTINGS.espera_entre_tentativas
+PALAVRAS_CHAVE = SETTINGS.palavras_chave
 
 
 def resolve_edge_executable() -> str | None:
