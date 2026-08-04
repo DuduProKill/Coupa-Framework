@@ -54,6 +54,10 @@ Filename: "{cmd}"; Parameters: "/C rmdir /s /q ""{userappdata}\CoupaFramework"""
   Check: ConfirmarLimpezaDados
 
 [Code]
+var
+  ModuleSelectionPage: TInputOptionWizardPage;
+  RequestedModuleName: String;
+
 function ConfirmarLimpezaDados(): Boolean;
 begin
   Result := MsgBox(
@@ -61,6 +65,172 @@ begin
     '(Logs, histórico de renomeação e configurações locais serão apagados)',
     mbConfirmation, MB_YESNO
   ) = IDYES;
+end;
+
+function GetRequestedModuleName(): String;
+var
+  Index: Integer;
+  Param: String;
+begin
+  Result := '';
+  for Index := 1 to ParamCount do
+  begin
+    Param := LowerCase(ParamStr(Index));
+    if Pos('/module=', Param) = 1 then
+    begin
+      Result := Copy(Param, Length('/module=') + 1, Length(Param));
+      Break;
+    end;
+  end;
+end;
+
+procedure InitializeWizard();
+begin
+  RequestedModuleName := GetRequestedModuleName();
+  ModuleSelectionPage := CreateInputOptionPage(
+    wpSelectTasks,
+    'Módulos do programa',
+    'Escolha quais módulos deseja instalar.',
+    'Marque os módulos que você quer usar. Todas as opções vêm marcadas por padrão.',
+    False, False
+  );
+
+  ModuleSelectionPage.Add('Extrator Inteligente');
+  ModuleSelectionPage.Add('Baixador de Orçamentos');
+  ModuleSelectionPage.Add('Gerador de PDF de Pedidos');
+  ModuleSelectionPage.Add('Renomeador');
+  ModuleSelectionPage.Add('Organizador');
+  ModuleSelectionPage.Add('Disparo de E-mails');
+  ModuleSelectionPage.Add('Gerenciar Perfis');
+
+  if RequestedModuleName <> '' then
+  begin
+    ModuleSelectionPage.Values[0] := False;
+    ModuleSelectionPage.Values[1] := False;
+    ModuleSelectionPage.Values[2] := False;
+    ModuleSelectionPage.Values[3] := False;
+    ModuleSelectionPage.Values[4] := False;
+    ModuleSelectionPage.Values[5] := False;
+    ModuleSelectionPage.Values[6] := False;
+
+    if RequestedModuleName = 'extrator' then ModuleSelectionPage.Values[0] := True;
+    if RequestedModuleName = 'downloader' then ModuleSelectionPage.Values[1] := True;
+    if RequestedModuleName = 'pdf' then ModuleSelectionPage.Values[2] := True;
+    if RequestedModuleName = 'renomeador' then ModuleSelectionPage.Values[3] := True;
+    if RequestedModuleName = 'organizador' then ModuleSelectionPage.Values[4] := True;
+    if RequestedModuleName = 'email' then ModuleSelectionPage.Values[5] := True;
+    if RequestedModuleName = 'perfis' then ModuleSelectionPage.Values[6] := True;
+  end
+  else
+  begin
+    ModuleSelectionPage.Values[0] := True;
+    ModuleSelectionPage.Values[1] := True;
+    ModuleSelectionPage.Values[2] := True;
+    ModuleSelectionPage.Values[3] := True;
+    ModuleSelectionPage.Values[4] := True;
+    ModuleSelectionPage.Values[5] := True;
+    ModuleSelectionPage.Values[6] := True;
+  end;
+end;
+
+function BoolToJsonString(Value: Boolean): String;
+begin
+  if Value then
+    Result := 'true'
+  else
+    Result := 'false';
+end;
+
+function SaveModuleSelection(): Boolean;
+var
+  ModuleFileName: String;
+  ModuleJson: String;
+begin
+  ModuleFileName := ExpandConstant('{app}\module_selection.json');
+  ModuleJson := '{' + #13#10 +
+    '  "extrator": ' + BoolToJsonString(ModuleSelectionPage.Values[0]) + ',' + #13#10 +
+    '  "downloader": ' + BoolToJsonString(ModuleSelectionPage.Values[1]) + ',' + #13#10 +
+    '  "pdf": ' + BoolToJsonString(ModuleSelectionPage.Values[2]) + ',' + #13#10 +
+    '  "renomeador": ' + BoolToJsonString(ModuleSelectionPage.Values[3]) + ',' + #13#10 +
+    '  "organizador": ' + BoolToJsonString(ModuleSelectionPage.Values[4]) + ',' + #13#10 +
+    '  "email": ' + BoolToJsonString(ModuleSelectionPage.Values[5]) + ',' + #13#10 +
+    '  "perfis": ' + BoolToJsonString(ModuleSelectionPage.Values[6]) + #13#10 +
+    '}' + #13#10;
+
+  Result := SaveStringToFile(ModuleFileName, ModuleJson, False);
+  if not Result then
+  begin
+    MsgBox('Não foi possível salvar a seleção de módulos do instalador.', mbError, MB_OK);
+  end;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  if CurPageID = ModuleSelectionPage.ID then
+  begin
+    Result := SaveModuleSelection();
+    Exit;
+  end;
+
+  Result := True;
+end;
+
+function RemoveUnselectedModuleFiles(): Boolean;
+var
+  ModuleDir: String;
+begin
+  ModuleDir := ExpandConstant('{app}\modules');
+
+  if not ModuleSelectionPage.Values[0] then
+  begin
+    if FileExists(ModuleDir + '\ui_coupa.py') then DeleteFile(ModuleDir + '\ui_coupa.py');
+    if FileExists(ModuleDir + '\coupa_scraper.py') then DeleteFile(ModuleDir + '\coupa_scraper.py');
+  end;
+
+  if not ModuleSelectionPage.Values[1] then
+  begin
+    if FileExists(ModuleDir + '\ui_downloader.py') then DeleteFile(ModuleDir + '\ui_downloader.py');
+    if FileExists(ModuleDir + '\download_scraper.py') then DeleteFile(ModuleDir + '\download_scraper.py');
+  end;
+
+  if not ModuleSelectionPage.Values[2] then
+  begin
+    if FileExists(ModuleDir + '\ui_pdf_generator.py') then DeleteFile(ModuleDir + '\ui_pdf_generator.py');
+    if FileExists(ModuleDir + '\pdf_generator.py') then DeleteFile(ModuleDir + '\pdf_generator.py');
+  end;
+
+  if not ModuleSelectionPage.Values[3] then
+  begin
+    if FileExists(ModuleDir + '\ui_renomeador.py') then DeleteFile(ModuleDir + '\ui_renomeador.py');
+    if FileExists(ModuleDir + '\services\renomeador_service.py') then DeleteFile(ModuleDir + '\services\renomeador_service.py');
+  end;
+
+  if not ModuleSelectionPage.Values[4] then
+  begin
+    if FileExists(ModuleDir + '\ui_organizador.py') then DeleteFile(ModuleDir + '\ui_organizador.py');
+    if FileExists(ModuleDir + '\organizador.py') then DeleteFile(ModuleDir + '\organizador.py');
+  end;
+
+  if not ModuleSelectionPage.Values[5] then
+  begin
+    if FileExists(ModuleDir + '\ui_email_sender.py') then DeleteFile(ModuleDir + '\ui_email_sender.py');
+    if FileExists(ModuleDir + '\email_sender.py') then DeleteFile(ModuleDir + '\email_sender.py');
+  end;
+
+  if not ModuleSelectionPage.Values[6] then
+  begin
+    if FileExists(ModuleDir + '\ui_profile_manager.py') then DeleteFile(ModuleDir + '\ui_profile_manager.py');
+  end;
+
+  Result := True;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+  begin
+    RemoveUnselectedModuleFiles();
+  end;
 end;
 
 // Verifica se o Microsoft Edge está instalado antes de instalar

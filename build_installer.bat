@@ -78,7 +78,8 @@ for %%P in (
 if defined INNO (
     if not exist "installer_output" mkdir "installer_output"
     "%INNO%" installer.iss
-    if %errorlevel% neq 0 (
+    set "ISCC_EXIT=!ERRORLEVEL!"
+    if not "!ISCC_EXIT!"=="0" (
         echo [ERRO] Falha ao gerar o instalador com Inno Setup.
         pause
         exit /b 1
