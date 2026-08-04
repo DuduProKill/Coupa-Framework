@@ -1,5 +1,6 @@
 import subprocess
 import tempfile
+from typing import Optional
 import requests
 from PyQt6.QtCore import QThread, pyqtSignal, QObject
 from PyQt6.QtWidgets import QMessageBox, QProgressDialog, QApplication
@@ -7,6 +8,27 @@ from PyQt6.QtCore import Qt
 
 GITHUB_REPO = "DuduProKill/Coupa-Framework"
 CURRENT_VERSION = "1.1.1"
+
+
+def _normalize_version(value: str) -> Optional[tuple[int, int, int]]:
+    text = (value or "").strip().lstrip("vV")
+    if not text:
+        return None
+    parts = text.split(".")
+    if len(parts) != 3:
+        return None
+    try:
+        return tuple(int(part) for part in parts)
+    except ValueError:
+        return None
+
+
+def _is_newer_version(latest_tag: str, current_version: str) -> bool:
+    latest = _normalize_version(latest_tag)
+    current = _normalize_version(current_version)
+    if latest is None or current is None:
+        return False
+    return latest > current
 
 
 class _CheckThread(QThread):
@@ -22,8 +44,8 @@ class _CheckThread(QThread):
             if r.status_code != 200:
                 return
             data = r.json()
-            tag = data.get("tag_name", "").lstrip("v")
-            if not tag or tag == CURRENT_VERSION:
+            tag = data.get("tag_name", "")
+            if not tag or not _is_newer_version(tag, CURRENT_VERSION):
                 return
             asset_url = next(
                 (a["browser_download_url"] for a in data.get("assets", []) if a["name"].endswith(".exe")),
