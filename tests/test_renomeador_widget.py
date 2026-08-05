@@ -1,6 +1,6 @@
 
 import pytest
-from PyQt6.QtWidgets import QApplication, QTableWidgetItem
+from PyQt6.QtWidgets import QApplication, QMessageBox, QTableWidgetItem
 
 from modules.services.renomeador_service import RenomeadorService
 from modules.ui_renomeador import RenomeadorWidget
@@ -26,6 +26,7 @@ def test_renomear_usa_coluna_de_status_correta(tmp_path, qt_app, monkeypatch):
     widget.table.setItem(0, 5, QTableWidgetItem("\u2705 Pronto"))
 
     monkeypatch.setattr(widget, "salvar_historico", lambda *args, **kwargs: None)
+    monkeypatch.setattr(QMessageBox, "information", lambda *args, **kwargs: None)
 
     widget.renomear()
 
