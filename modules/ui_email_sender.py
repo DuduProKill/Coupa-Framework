@@ -1,6 +1,5 @@
 import os
 import re
-from datetime import datetime
 from typing import Dict, Any, List
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
@@ -9,7 +8,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import pyqtSignal
 from modules.config import ProfileManager, MAP_FORNECEDORES, MAP_UNIDADES
-from modules.email_sender import EmailWorker, SpreadsheetCache
+from modules.email_sender import EmailWorker
 from modules.fluxo_orquestrador import get_modo_automatico
 from modules.logger import UILogger
 from modules.styles import set_status, scrollable
@@ -119,7 +118,10 @@ class EmailSenderWidget(QWidget):
         smtp_layout.addRow(QLabel(""), creds_widget)
 
         if not KEYRING_AVAILABLE:
-            status_label = QLabel("\u26a0\ufe0f keyring n\u00e3o instalado. `pip install keyring` para salvar credenciais com seguran\u00e7a.")
+            status_label = QLabel(
+                "\u26a0\ufe0f keyring n\u00e3o instalado. `pip install keyring` "
+                "para salvar credenciais com seguran\u00e7a."
+            )
             set_status(status_label, "warning")
             smtp_layout.addRow(QLabel(""), status_label)
 
@@ -332,7 +334,10 @@ class EmailSenderWidget(QWidget):
                 "requisicao": ["n\u00ba rc", "n\u00b0 rc", "nrcr", "rc", "requisicao", "requerimento"],
                 "pedido": ["n\u00b0 po", "n\u00b0 do po", "numero po", "n\u00famero do po", "po", "pedido"],
                 "fornecedor": ["fornecedor", "nome do fornecedor", "fornecedor (nome)", "supplier"],
-                "fornecedor_num": ["n\u00b0 do fornecedor", "numero do fornecedor", "fornecedor (numero)", "fornecedor num", "supplier id"],
+                "fornecedor_num": [
+                    "n\u00b0 do fornecedor", "numero do fornecedor", "fornecedor (numero)",
+                    "fornecedor num", "supplier id",
+                ],
                 "localidade": ["unidade de entrega", "unidade", "localidade", "destino", "delivery unit"],
                 "criado_por": ["criado por", "created by", "criado_por"],
                 "solicitado_por": ["solicitado por", "requested by", "solicitado_por"],
@@ -460,9 +465,13 @@ class EmailSenderWidget(QWidget):
                 if len(fornecedores) > 5:
                     lista += f"\n  ... e mais {len(fornecedores) - 5} fornecedor(es)"
                 preview = f"\n\nFornecedores:\n{lista}"
+            mensagem_confirmacao = (
+                f"Isso vai disparar e-mails para até {len(validos)} destinatário(s) usando "
+                f"o perfil '{perfil_nome}' via {send_mode.upper()}.{preview}\n\nConfirma?"
+            )
             confirmacao = QMessageBox.question(
                 self, "Confirmar Envio",
-                f"Isso vai disparar e-mails para até {len(validos)} destinatário(s) usando o perfil '{perfil_nome}' via {send_mode.upper()}.{preview}\n\nConfirma?",
+                mensagem_confirmacao,
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
             if confirmacao != QMessageBox.StandardButton.Yes:

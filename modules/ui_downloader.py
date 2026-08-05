@@ -1,10 +1,9 @@
 import os
-from typing import List
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTextEdit, QGroupBox, QProgressBar, QFileDialog, QMessageBox
 )
-from PyQt6.QtCore import pyqtSlot, QThread, pyqtSignal
+from PyQt6.QtCore import pyqtSlot, pyqtSignal
 
 from modules.download_scraper import DownloadWorker
 from modules.fluxo_orquestrador import get_modo_automatico
@@ -51,7 +50,9 @@ class OrcamentoDownloaderWidget(QWidget):
         set_status(self.lbl_import_status, "muted")
         self.lbl_import_status.setWordWrap(True)
         self.txt_req_list = QTextEdit()
-        self.txt_req_list.setPlaceholderText("Digite as requisi\u00e7\u00f5es manualmente ou aguarde a importa\u00e7\u00e3o autom\u00e1tica da Aba 1.")
+        self.txt_req_list.setPlaceholderText(
+            "Digite as requisi\u00e7\u00f5es manualmente ou aguarde a importa\u00e7\u00e3o autom\u00e1tica da Aba 1."
+        )
         self._user_editou_manualmente = False
         self.txt_req_list.textChanged.connect(self._marcar_edicao_manual)
         req_layout.addWidget(self.lbl_import_status)
@@ -112,13 +113,19 @@ class OrcamentoDownloaderWidget(QWidget):
         requisicoes_com_pedido = DataBus.get_requisicoes_com_pedido()
 
         if not requisicoes_com_pedido:
-            set_status(self.lbl_import_status, "muted", "Aguardando dados da Aba 1 (\U0001f4e6 Extrator Inteligente)...")
+            set_status(
+                self.lbl_import_status, "muted",
+                "Aguardando dados da Aba 1 (\U0001f4e6 Extrator Inteligente)...",
+            )
             return
 
         self.txt_req_list.blockSignals(True)
         self.txt_req_list.setPlainText("\n".join(requisicoes_com_pedido))
         self.txt_req_list.blockSignals(False)
-        set_status(self.lbl_import_status, "success", f"\u2705 {len(requisicoes_com_pedido)} requisicao(oes) importada(s) da Aba 1")
+        set_status(
+            self.lbl_import_status, "success",
+            f"\u2705 {len(requisicoes_com_pedido)} requisicao(oes) importada(s) da Aba 1",
+        )
         self._user_editou_manualmente = False
         # Feedback visual: borda verde por 1.5s
         from PyQt6.QtCore import QTimer
@@ -171,7 +178,10 @@ class OrcamentoDownloaderWidget(QWidget):
 
         if not requisicoes:
             if not modo_automatico:
-                QMessageBox.warning(self, "Erro", "Nenhuma requisicao disponivel. Execute a Aba 1 (Extrator Inteligente) primeiro!")
+                QMessageBox.warning(
+                    self, "Erro",
+                    "Nenhuma requisicao disponivel. Execute a Aba 1 (Extrator Inteligente) primeiro!",
+                )
             return
 
         self.btn_iniciar.setEnabled(False)

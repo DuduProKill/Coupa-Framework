@@ -2,16 +2,13 @@ import csv
 import logging
 import os
 import re
-import shutil
-from pathlib import Path
 from datetime import datetime
 from typing import Dict
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QTableWidget, QTableWidgetItem, QFileDialog, QMessageBox, QComboBox, QHeaderView
+    QTableWidget, QTableWidgetItem, QFileDialog, QMessageBox, QComboBox
 )
 from PyQt6.QtCore import pyqtSignal, QThread
-from modules.logger import UILogger
 from modules.config import HISTORICO_RENOMEADOR
 from modules.services.renomeador_service import RenomeadorService
 import fitz
@@ -186,7 +183,9 @@ class RenomeadorWidget(QWidget):
 
     def _on_row_ready(self, row: int, resultado: dict):
         if resultado["status"] == "OK":
-            novo_nome = self.gerar_nome_arquivo(resultado['id'], resultado['fornecedor'], resultado.get('unidade_entrega', ''))
+            novo_nome = self.gerar_nome_arquivo(
+                resultado['id'], resultado['fornecedor'], resultado.get('unidade_entrega', '')
+            )
             self.table.setItem(row, 1, QTableWidgetItem(resultado['id']))
             self.table.setItem(row, 2, QTableWidgetItem(resultado['fornecedor']))
             self.table.setItem(row, 3, QTableWidgetItem(resultado.get('unidade_entrega', '')))
@@ -335,7 +334,8 @@ class RenomeadorWidget(QWidget):
             re.IGNORECASE
         )
         fornecedor = re.search(
-            r"(?:Fornecedor|Raz[ãa]o(?: Social)?)\s*[:\-]?\s*(.+?)(?=\s{2,}|Endere[cç]o|Entrega|CNPJ|CPF|Item\s+Data|$)",
+            r"(?:Fornecedor|Raz[ãa]o(?: Social)?)\s*[:\-]?\s*(.+?)"
+            r"(?=\s{2,}|Endere[cç]o|Entrega|CNPJ|CPF|Item\s+Data|$)",
             texto,
             re.IGNORECASE | re.S
         )

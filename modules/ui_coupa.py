@@ -1,10 +1,8 @@
-import re
-import time
-from typing import Dict, Any, List
+from typing import List
 from PyQt6.QtWidgets import (
-    QDialog, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QComboBox, QTextEdit,
-    QGroupBox, QFormLayout, QMessageBox, QCheckBox, QFileDialog,
+    QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QPushButton, QComboBox, QTextEdit,
+    QGroupBox, QMessageBox, QCheckBox, QFileDialog,
     QProgressBar, QTableWidget, QTableWidgetItem, QHeaderView
 )
 from PyQt6.QtCore import QTimer
@@ -93,7 +91,9 @@ class CoupaExtractorWidget(QWidget):
         self.lbl_fluxo_status = QLabel("Status: aguardando extra\u00e7\u00e3o...")
         set_status(self.lbl_fluxo_status, "muted")
         self.lbl_fluxo_status.setWordWrap(True)
-        fluxo_layout.addWidget(QLabel("Selecione quais processos seguir\u00e3o automaticamente ap\u00f3s a extra\u00e7\u00e3o:"))
+        fluxo_layout.addWidget(
+            QLabel("Selecione quais processos seguir\u00e3o automaticamente ap\u00f3s a extra\u00e7\u00e3o:")
+        )
         fluxo_layout.addWidget(self.chk_aba2)
         fluxo_layout.addWidget(self.chk_aba3)
         fluxo_layout.addWidget(self.chk_aba4)
@@ -167,12 +167,19 @@ class CoupaExtractorWidget(QWidget):
     def load_selected_profile(self, name: str):
         if name in self.profiles:
             self.txt_req_list.clear()
-            cfg = self.profiles[name].get("config", {"criado_por": True, "solicitado_por": True, "emails": False, "destino": False})
+            cfg = self.profiles[name].get(
+                "config",
+                {"criado_por": True, "solicitado_por": True, "emails": False, "destino": False},
+            )
             campos = []
-            if cfg.get("criado_por"): campos.append("Criado Por")
-            if cfg.get("solicitado_por"): campos.append("Solicitado Por")
-            if cfg.get("emails"): campos.append("E-mails")
-            if cfg.get("destino"): campos.append("Destino")
+            if cfg.get("criado_por"):
+                campos.append("Criado Por")
+            if cfg.get("solicitado_por"):
+                campos.append("Solicitado Por")
+            if cfg.get("emails"):
+                campos.append("E-mails")
+            if cfg.get("destino"):
+                campos.append("Destino")
             self.lbl_config_status.setText(f"Campos ativos: {', '.join(campos) if campos else 'Nenhum'}")
 
     def open_edge_for_login(self):
@@ -187,11 +194,16 @@ class CoupaExtractorWidget(QWidget):
             return
 
         abas_selecionadas = []
-        if self.chk_aba2.isChecked(): abas_selecionadas.append(2)
-        if self.chk_aba3.isChecked(): abas_selecionadas.append(3)
-        if self.chk_aba4.isChecked(): abas_selecionadas.append(4)
-        if self.chk_aba5.isChecked(): abas_selecionadas.append(5)
-        if self.chk_aba6.isChecked(): abas_selecionadas.append(6)
+        if self.chk_aba2.isChecked():
+            abas_selecionadas.append(2)
+        if self.chk_aba3.isChecked():
+            abas_selecionadas.append(3)
+        if self.chk_aba4.isChecked():
+            abas_selecionadas.append(4)
+        if self.chk_aba5.isChecked():
+            abas_selecionadas.append(5)
+        if self.chk_aba6.isChecked():
+            abas_selecionadas.append(6)
 
         if abas_selecionadas:
             # Melhoria 9: validacao centralizada no runner, sem acoplamento parent_fw.
@@ -251,7 +263,9 @@ class CoupaExtractorWidget(QWidget):
 
     def edge_ready_for_login(self):
         self.btn_confirm_login.setEnabled(True)
-        self.txt_logs.append("\U0001f510 Edge aberto. Conclua o login no Coupa e confirme para iniciar a extra\u00e7\u00e3o.")
+        self.txt_logs.append(
+            "\U0001f510 Edge aberto. Conclua o login no Coupa e confirme para iniciar a extra\u00e7\u00e3o."
+        )
 
     def confirm_login_and_start_extraction(self):
         if not self.worker or not self.worker.isRunning():
@@ -270,7 +284,10 @@ class CoupaExtractorWidget(QWidget):
         else:
             self.worker.pausar()
             self.btn_pause.setText("\u25b6\ufe0f Retomar Extra\u00e7\u00e3o")
-            self.txt_logs.append("\u23f8\ufe0f Pausa solicitada; a extra\u00e7\u00e3o ser\u00e1 pausada ao concluir a requisi\u00e7\u00e3o atual.")
+            self.txt_logs.append(
+                "\u23f8\ufe0f Pausa solicitada; a extra\u00e7\u00e3o ser\u00e1 pausada "
+                "ao concluir a requisi\u00e7\u00e3o atual."
+            )
 
     def automation_finished(self, results: list):
         self.btn_open_edge.setEnabled(True)
@@ -307,16 +324,24 @@ class CoupaExtractorWidget(QWidget):
         self.tbl_results.setSortingEnabled(True)
 
         abas_selecionadas = []
-        if self.chk_aba2.isChecked(): abas_selecionadas.append(2)
-        if self.chk_aba3.isChecked(): abas_selecionadas.append(3)
-        if self.chk_aba4.isChecked(): abas_selecionadas.append(4)
-        if self.chk_aba5.isChecked(): abas_selecionadas.append(5)
-        if self.chk_aba6.isChecked(): abas_selecionadas.append(6)
+        if self.chk_aba2.isChecked():
+            abas_selecionadas.append(2)
+        if self.chk_aba3.isChecked():
+            abas_selecionadas.append(3)
+        if self.chk_aba4.isChecked():
+            abas_selecionadas.append(4)
+        if self.chk_aba5.isChecked():
+            abas_selecionadas.append(5)
+        if self.chk_aba6.isChecked():
+            abas_selecionadas.append(6)
 
         if abas_selecionadas:
             self.iniciar_fluxo_automatico(results, abas_selecionadas)
         else:
-            set_status(self.lbl_fluxo_status, "muted", "Status: fluxo autom\u00e1tico desabilitado. Nenhuma aba selecionada.")
+            set_status(
+                self.lbl_fluxo_status, "muted",
+                "Status: fluxo autom\u00e1tico desabilitado. Nenhuma aba selecionada.",
+            )
 
     def iniciar_fluxo_automatico(self, results: list, abas: List[int]):
         """Inicia o fluxo autom\u00e1tico usando o runner centralizado do fluxo_orquestrador."""
@@ -335,7 +360,10 @@ class CoupaExtractorWidget(QWidget):
         self._fluxo_em_andamento = False
         if sucesso:
             self.log("\U0001f3c1 " + mensagem)
-            set_status(self.lbl_fluxo_status, "success", "Status: fluxo autom\u00e1tico conclu\u00eddo com sucesso! \u2705")
+            set_status(
+                self.lbl_fluxo_status, "success",
+                "Status: fluxo autom\u00e1tico conclu\u00eddo com sucesso! \u2705",
+            )
         else:
             self.log("\u274c " + mensagem)
             set_status(self.lbl_fluxo_status, "error", "Status: fluxo bloqueado - requisitos pendentes \u274c")
@@ -343,9 +371,13 @@ class CoupaExtractorWidget(QWidget):
         self.parent_fw.tab_widget.setCurrentWidget(self)
 
     def export_to_excel(self):
-        if not self.last_results: return
-        file_path, _ = QFileDialog.getSaveFileName(self, "Salvar Relat\u00f3rio", "Relatorio_Coupa.xlsx", "Excel (*.xlsx)")
-        if not file_path: return
+        if not self.last_results:
+            return
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Salvar Relat\u00f3rio", "Relatorio_Coupa.xlsx", "Excel (*.xlsx)"
+        )
+        if not file_path:
+            return
 
         resultado = export_to_excel_file(self.last_results, file_path)
         if resultado and resultado.startswith("Erro"):

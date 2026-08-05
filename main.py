@@ -64,7 +64,7 @@ class LockedModuleWidget(QWidget):
         icon_label.setStyleSheet("font-size: 48px;")
         layout.addWidget(icon_label, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        title = QLabel(f"Módulo indisponível")
+        title = QLabel("Módulo indisponível")
         title.setStyleSheet("font-size: 20px; font-weight: 700;")
         layout.addWidget(title, alignment=Qt.AlignmentFlag.AlignCenter)
 

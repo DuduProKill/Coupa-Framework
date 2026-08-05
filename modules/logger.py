@@ -113,11 +113,17 @@ class UILogger:
         if log_widget is None:
             return
         msg_lower = msg.lower()
-        if "❌" in msg or "✖" in msg or ("erro" in msg_lower and ("❌" in msg or "✖" in msg or msg_lower.startswith("erro"))):
+        eh_erro = "❌" in msg or "✖" in msg or ("erro" in msg_lower and msg_lower.startswith("erro"))
+        eh_sucesso = (
+            "✅" in msg or "🎉" in msg or "🏁" in msg or "🔒" in msg or "🔓" in msg
+            or "concluí" in msg_lower or "concluido" in msg_lower
+            or "finalizado" in msg_lower or "sucesso" in msg_lower
+        )
+        if eh_erro:
             UILogger.error(log_widget, msg)
         elif "⚠️" in msg or "aviso" in msg_lower or "atenção" in msg_lower or "atencao" in msg_lower:
             UILogger.warning(log_widget, msg)
-        elif "✅" in msg or "🎉" in msg or "🏁" in msg or "🔒" in msg or "🔓" in msg or "concluí" in msg_lower or "concluido" in msg_lower or "finalizado" in msg_lower or "sucesso" in msg_lower:
+        elif eh_sucesso:
             UILogger.success(log_widget, msg)
         else:
             UILogger.info(log_widget, msg)

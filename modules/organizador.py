@@ -1,9 +1,7 @@
 import csv
-import os
 import re
 import shutil
 from pathlib import Path
-from typing import List
 from openpyxl import load_workbook
 
 
@@ -179,7 +177,7 @@ class Organizador:
         self.log(f'Total de linhas lidas da planilha: {len(linhas)}')
         if linhas:
             self.log(f'  Colunas mapeadas: RC="{self.col_rc}" | PO="{self.col_po}" | Forn="{self.col_fornecedor}"')
-            self.log(f'  Primeiras linhas:')
+            self.log('  Primeiras linhas:')
             for i, amostra in enumerate(linhas[:3]):
                 self.log(f'    [{i+1}] RC="{amostra["rc"]}" | PO="{amostra["po"]}" | Forn="{amostra["fornecedor"]}"')
         self.log('')
@@ -220,7 +218,9 @@ class Organizador:
                 continue
 
             try:
-                propostas_encontradas = self.buscar_arquivo_por_codigo(arquivos_propostas, rc) if pasta_propostas else []
+                propostas_encontradas = (
+                    self.buscar_arquivo_por_codigo(arquivos_propostas, rc) if pasta_propostas else []
+                )
             except Exception as e:
                 propostas_encontradas = []
                 erro_msg = f'Erro ao buscar propostas para RC="{rc}": {str(e)}'

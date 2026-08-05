@@ -132,7 +132,7 @@ class PdfGeneratorWorker(QThread):
 
                     try:
                         page.goto(url_print, wait_until="domcontentloaded", timeout=45000)
-                        
+
                         try:
                             page.wait_for_load_state("load", timeout=5000)
                         except Exception:
@@ -141,7 +141,7 @@ class PdfGeneratorWorker(QThread):
                         doc_pronto = False
                         for tentativa in range(1, MAX_TENTATIVAS + 1):
                             time.sleep(0.5)
-                            
+
                             conteudo = page.content().lower()
                             existe_erro = any(texto_err.lower() in conteudo for texto_err in TEXTOS_SEM_DOCUMENTO)
 
@@ -151,7 +151,8 @@ class PdfGeneratorWorker(QThread):
 
                             if tentativa < MAX_TENTATIVAS:
                                 self.log_signal.emit(
-                                    f"⏳ Documento do Pedido #{ped} ainda em processamento. Tentando recarregar em {ESPERA_ENTRE_TENTATIVAS}s..."
+                                    f"⏳ Documento do Pedido #{ped} ainda em processamento. "
+                                    f"Tentando recarregar em {ESPERA_ENTRE_TENTATIVAS}s..."
                                 )
                                 time.sleep(ESPERA_ENTRE_TENTATIVAS)
                                 page.reload(wait_until="domcontentloaded")

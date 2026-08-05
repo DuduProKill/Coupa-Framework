@@ -3,7 +3,7 @@ import os
 import base64
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -25,22 +25,46 @@ class FrameworkSettings:
     project_root: Path = PROJECT_ROOT
     config_file: Path = CONFIG_FILE
     coupa_base_url: str = os.environ.get("COUPA_BASE_URL", "https://sua-instancia.coupahost.com")
-    map_fornecedores: Path = field(default_factory=lambda: Path(os.environ.get("MAP_FORNECEDORES", str(PROJECT_ROOT / "mapeamento_fornecedores.xlsx"))))
-    map_unidades: Path = field(default_factory=lambda: Path(os.environ.get("MAP_UNIDADES", str(PROJECT_ROOT / "mapeamento_unidades.xlsx"))))
+    map_fornecedores: Path = field(
+        default_factory=lambda: Path(
+            os.environ.get("MAP_FORNECEDORES", str(PROJECT_ROOT / "mapeamento_fornecedores.xlsx"))
+        )
+    )
+    map_unidades: Path = field(
+        default_factory=lambda: Path(
+            os.environ.get("MAP_UNIDADES", str(PROJECT_ROOT / "mapeamento_unidades.xlsx"))
+        )
+    )
     pasta_saida_padrao_pdf: Path = field(default_factory=lambda: PROJECT_ROOT / "saida_pedidos_pdf")
-    perfil_edge_download: Path = field(default_factory=lambda: Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "CoupaFramework" / "PerfilEdgeDownload")
-    historico_renomeador: Path = field(default_factory=lambda: Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "CoupaFramework" / "historico_renomeador.csv")
+    perfil_edge_download: Path = field(
+        default_factory=lambda: Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        / "CoupaFramework"
+        / "PerfilEdgeDownload"
+    )
+    historico_renomeador: Path = field(
+        default_factory=lambda: Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+        / "CoupaFramework"
+        / "historico_renomeador.csv"
+    )
     url_teste_login: str = ""
     url_base_impressao_pdf: str = ""
     textos_sem_documento: tuple[str, ...] = ("AGUARDE, EM PROCESSAMENTO!",)
-    margens_impressao: Dict[str, str] = field(default_factory=lambda: {"top": "0.4in", "bottom": "0.4in", "left": "0.4in", "right": "0.4in"})
+    margens_impressao: Dict[str, str] = field(
+        default_factory=lambda: {"top": "0.4in", "bottom": "0.4in", "left": "0.4in", "right": "0.4in"}
+    )
     max_tentativas: int = 3
     espera_entre_tentativas: int = 1
-    palavras_chave: tuple[str, ...] = ("orçamento", "orcamento", "proposta", "cotação", "cotacao", "quotation", "budget")
+    palavras_chave: tuple[str, ...] = (
+        "orçamento", "orcamento", "proposta", "cotação", "cotacao", "quotation", "budget",
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "url_teste_login", f"{self.coupa_base_url.rstrip('/')}/")
-        object.__setattr__(self, "url_base_impressao_pdf", f"{self.coupa_base_url.rstrip('/')}/order_headers/show_custom/{{pedido}}?version=1")
+        object.__setattr__(
+            self,
+            "url_base_impressao_pdf",
+            f"{self.coupa_base_url.rstrip('/')}/order_headers/show_custom/{{pedido}}?version=1",
+        )
 
 
 SETTINGS = FrameworkSettings()
@@ -156,9 +180,9 @@ def decrypt_value(ciphertext: str) -> str:
 def encrypt_sensitive_config(config: Dict[str, Any]) -> Dict[str, Any]:
     """Percorre o config e criptografa campos sensíveis."""
     encrypted = dict(config)
-    for field in SENSITIVE_FIELDS:
-        if field in encrypted and encrypted[field]:
-            encrypted[field] = encrypt_value(str(encrypted[field]))
+    for campo in SENSITIVE_FIELDS:
+        if campo in encrypted and encrypted[campo]:
+            encrypted[campo] = encrypt_value(str(encrypted[campo]))
     return encrypted
 
 # amazonq-ignore-next-line
@@ -166,9 +190,9 @@ def encrypt_sensitive_config(config: Dict[str, Any]) -> Dict[str, Any]:
 def decrypt_sensitive_config(config: Dict[str, Any]) -> Dict[str, Any]:
     """Percorre o config e descriptografa campos sensíveis."""
     decrypted = dict(config)
-    for field in SENSITIVE_FIELDS:
-        if field in decrypted and decrypted[field]:
-            decrypted[field] = decrypt_value(str(decrypted[field]))
+    for campo in SENSITIVE_FIELDS:
+        if campo in decrypted and decrypted[campo]:
+            decrypted[campo] = decrypt_value(str(decrypted[campo]))
     return decrypted
 
 
@@ -181,7 +205,7 @@ class ProfileManager:
                 with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                     raw_profiles = json.load(f)
                 # Descriptografa os configs sensíveis de cada perfil
-                for profile_name, profile_data in raw_profiles.items():
+                for profile_data in raw_profiles.values():
                     if "config" in profile_data:
                         profile_data["config"] = decrypt_sensitive_config(profile_data["config"])
                 return raw_profiles

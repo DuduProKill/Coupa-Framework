@@ -1,12 +1,10 @@
 import os
-from typing import Dict, List
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTextEdit, QGroupBox, QProgressBar, QFileDialog, QMessageBox
 )
 from PyQt6.QtCore import pyqtSlot, pyqtSignal
 
-from modules.config import PASTA_SAIDA_PADRAO_PDF
 from modules.fluxo_orquestrador import get_modo_automatico
 from modules.pdf_generator import PdfGeneratorWorker
 from modules.services.data_bus import DataBus
@@ -63,7 +61,9 @@ class PedidoPdfGeneratorWidget(QWidget):
         set_status(self.lbl_import_status, "muted")
         self.lbl_import_status.setWordWrap(True)
         self.txt_pedidos = QTextEdit()
-        self.txt_pedidos.setPlaceholderText("Digite os pedidos manualmente ou aguarde a importacao automatica da Aba 1.")
+        self.txt_pedidos.setPlaceholderText(
+            "Digite os pedidos manualmente ou aguarde a importacao automatica da Aba 1."
+        )
         self._user_editou_manualmente = False
         self.txt_pedidos.textChanged.connect(self._marcar_edicao_manual)
         pedidos_layout.addWidget(self.lbl_import_status)
@@ -127,7 +127,10 @@ class PedidoPdfGeneratorWidget(QWidget):
             self.txt_pedidos.blockSignals(True)
             self.txt_pedidos.setPlainText("\n".join(pedidos_extraidos))
             self.txt_pedidos.blockSignals(False)
-            set_status(self.lbl_import_status, "success", f"✅ {len(pedidos_extraidos)} pedido(s) importado(s) da Aba 1 via DataBus")
+            set_status(
+                self.lbl_import_status, "success",
+                f"✅ {len(pedidos_extraidos)} pedido(s) importado(s) da Aba 1 via DataBus",
+            )
             self._user_editou_manualmente = False
         else:
             set_status(self.lbl_import_status, "muted", "Aguardando dados da Aba 1 (📦 Extrator Inteligente)...")
@@ -195,7 +198,10 @@ class PedidoPdfGeneratorWidget(QWidget):
 
         if not pedidos:
             if not modo_automatico:
-                QMessageBox.warning(self, "Aviso", "Nenhum pedido disponivel. Execute a Aba 1 (Extrator Inteligente) primeiro!")
+                QMessageBox.warning(
+                    self, "Aviso",
+                    "Nenhum pedido disponivel. Execute a Aba 1 (Extrator Inteligente) primeiro!",
+                )
             return
 
         self.btn_gerar.setEnabled(False)

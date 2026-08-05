@@ -1,8 +1,5 @@
-import csv
 import os
-import re
 from pathlib import Path
-from typing import List
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QTextEdit, QGroupBox, QFormLayout, QFileDialog, QMessageBox
@@ -10,7 +7,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSignal
 from modules.organizador import Organizador
 from modules.logger import UILogger
-from modules.styles import set_status, scrollable
+from modules.styles import scrollable
 
 
 class OrganizadorWidget(QWidget):
@@ -30,15 +27,25 @@ class OrganizadorWidget(QWidget):
         group_paths = QGroupBox("Pastas e Planilha")
         form_paths = QFormLayout()
 
-        self.ent_propostas = QLineEdit(); self.btn_propostas = QPushButton("Buscar Pasta")
-        self.ent_pedidos = QLineEdit(); self.btn_pedidos = QPushButton("Buscar Pasta")
-        self.ent_destino = QLineEdit(); self.btn_destino = QPushButton("Buscar Pasta")
-        self.ent_planilha = QLineEdit(); self.btn_planilha = QPushButton("Buscar Planilha")
+        self.ent_propostas = QLineEdit()
+        self.btn_propostas = QPushButton("Buscar Pasta")
+        self.ent_pedidos = QLineEdit()
+        self.btn_pedidos = QPushButton("Buscar Pasta")
+        self.ent_destino = QLineEdit()
+        self.btn_destino = QPushButton("Buscar Pasta")
+        self.ent_planilha = QLineEdit()
+        self.btn_planilha = QPushButton("Buscar Planilha")
 
-        self.btn_propostas.clicked.connect(lambda: self.ent_propostas.setText(os.path.normpath(p) if (p := QFileDialog.getExistingDirectory(self, "Selecionar Pasta de Propostas")) else ""))
-        self.btn_pedidos.clicked.connect(lambda: self.ent_pedidos.setText(os.path.normpath(p) if (p := QFileDialog.getExistingDirectory(self, "Selecionar Pasta de Pedidos")) else ""))
-        self.btn_destino.clicked.connect(lambda: self.ent_destino.setText(os.path.normpath(p) if (p := QFileDialog.getExistingDirectory(self, "Selecionar Pasta de Destino")) else ""))
-        self.btn_planilha.clicked.connect(lambda: self.ent_planilha.setText(QFileDialog.getOpenFileName(self, "Selecionar Planilha", filter="Planilhas (*.xlsx *.csv)")[0]))
+        self.btn_propostas.clicked.connect(
+            lambda: self._selecionar_pasta(self.ent_propostas, "Selecionar Pasta de Propostas")
+        )
+        self.btn_pedidos.clicked.connect(
+            lambda: self._selecionar_pasta(self.ent_pedidos, "Selecionar Pasta de Pedidos")
+        )
+        self.btn_destino.clicked.connect(
+            lambda: self._selecionar_pasta(self.ent_destino, "Selecionar Pasta de Destino")
+        )
+        self.btn_planilha.clicked.connect(self._selecionar_planilha)
 
         form_paths.addRow("Pasta Propostas:", self.add_layout(self.ent_propostas, self.btn_propostas))
         form_paths.addRow("Pasta Pedidos:", self.add_layout(self.ent_pedidos, self.btn_pedidos))
@@ -72,6 +79,14 @@ class OrganizadorWidget(QWidget):
 
         outer_layout.addWidget(scrollable(content))
 
+    def _selecionar_pasta(self, entrada: QLineEdit, titulo: str) -> None:
+        pasta = QFileDialog.getExistingDirectory(self, titulo)
+        entrada.setText(os.path.normpath(pasta) if pasta else "")
+
+    def _selecionar_planilha(self) -> None:
+        caminho, _ = QFileDialog.getOpenFileName(self, "Selecionar Planilha", filter="Planilhas (*.xlsx *.csv)")
+        self.ent_planilha.setText(caminho)
+
     def add_layout(self, edit, btn):
         btn_limpar = QPushButton("\u2716")
         btn_limpar.setToolTip("Limpar campo")
@@ -82,7 +97,7 @@ class OrganizadorWidget(QWidget):
             if edit.text().strip():
                 resposta = QMessageBox.question(
                     edit, "Confirmar Limpeza",
-                    f"Tem certeza que deseja limpar este campo?",
+                    "Tem certeza que deseja limpar este campo?",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                 )
                 if resposta == QMessageBox.StandardButton.Yes:

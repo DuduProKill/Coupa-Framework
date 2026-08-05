@@ -1,5 +1,3 @@
-import os
-from typing import Any, Dict
 import logging
 
 from PyQt6.QtWidgets import (
@@ -169,7 +167,8 @@ class ProfileManagerWidget(QWidget):
             "template": self.txt_template.toPlainText().strip(),
         }
 
-        if self.txt_comprador_email.text().strip() and ";" not in self.txt_comprador_email.text().strip() and "," not in self.txt_comprador_email.text().strip():
+        comprador_email = self.txt_comprador_email.text().strip()
+        if comprador_email and ";" not in comprador_email and "," not in comprador_email:
             self.update_status("Use ; ou , para separar múltiplos e-mails do comprador.")
             return
 

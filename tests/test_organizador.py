@@ -1,4 +1,3 @@
-import shutil
 import pytest
 from pathlib import Path
 from modules.organizador import Organizador

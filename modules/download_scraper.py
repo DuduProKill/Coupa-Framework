@@ -4,7 +4,6 @@ import re
 import shutil
 import traceback
 from typing import List
-from pathlib import Path
 
 import fitz  # PyMuPDF (já está no requirements.txt)
 from docx import Document
@@ -128,7 +127,8 @@ class DownloadScraper:
         texto_normalizado = self.normalizar_texto(texto)
 
         if texto_normalizado == "":
-            if any(self.normalizar_texto(palavra) in self.normalizar_texto(nome_original) for palavra in PALAVRAS_CHAVE):
+            nome_normalizado = self.normalizar_texto(nome_original)
+            if any(self.normalizar_texto(palavra) in nome_normalizado for palavra in PALAVRAS_CHAVE):
                 shutil.copy(caminho_arquivo, destino)
                 self.arquivos_salvos_na_execucao.append(destino)
                 return True, destino

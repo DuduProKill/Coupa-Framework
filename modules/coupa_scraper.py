@@ -1,5 +1,4 @@
 import asyncio
-import os
 import re
 import threading
 from typing import Dict, Any, List
@@ -13,6 +12,11 @@ from modules.config import (
     resolve_edge_executable,
 )
 from modules.playwright_pool import PlaywrightContextManager
+
+_JS_NEXT_SIBLING_TEXT = (
+    "(element) => element.nextElementSibling ? "
+    "element.nextElementSibling.innerText : element.innerText"
+)
 
 
 class CoupaScraper:
@@ -185,11 +189,12 @@ class CoupaScraper:
                 criado_por_email = ""
                 if self.config_extrair.get("criado_por", True):
                     criado_por_label = await page.query_selector(
-                        "td:has-text('Criado por'), label:has-text('Criado por'), span:has-text('Criado por')"
+                        "td:has-text('Criado por'), label:has-text('Criado por'), "
+                        "span:has-text('Criado por')"
                     )
                     if criado_por_label:
                         criado_por = await page.evaluate(
-                            "(element) => element.nextElementSibling ? element.nextElementSibling.innerText : element.innerText",
+                            _JS_NEXT_SIBLING_TEXT,
                             criado_por_label,
                         )
                         criado_por = criado_por.replace("Criado por", "").strip()
@@ -204,11 +209,12 @@ class CoupaScraper:
                 solicitado_por_email = ""
                 if self.config_extrair.get("solicitado_por", True):
                     solicitado_por_label = await page.query_selector(
-                        "td:has-text('Solicitado por'), label:has-text('Solicitado por'), span:has-text('Solicitado por')"
+                        "td:has-text('Solicitado por'), label:has-text('Solicitado por'), "
+                        "span:has-text('Solicitado por')"
                     )
                     if solicitado_por_label:
                         solicitado_por = await page.evaluate(
-                            "(element) => element.nextElementSibling ? element.nextElementSibling.innerText : element.innerText",
+                            _JS_NEXT_SIBLING_TEXT,
                             solicitado_por_label,
                         )
                         solicitado_por = solicitado_por.split("(")[0].replace("Solicitado por", "").strip()
@@ -223,11 +229,12 @@ class CoupaScraper:
                 if self.config_extrair.get("emails", False):
                     emails = "Nenhum e-mail encontrado"
                     justificativa_label = await page.query_selector(
-                        "td:has-text('Justificativa'), label:has-text('Justificativa'), span:has-text('Justificativa')"
+                        "td:has-text('Justificativa'), label:has-text('Justificativa'), "
+                        "span:has-text('Justificativa')"
                     )
                     if justificativa_label:
                         justificativa_texto = await page.evaluate(
-                            "(element) => element.nextElementSibling ? element.nextElementSibling.innerText : element.innerText",
+                            _JS_NEXT_SIBLING_TEXT,
                             justificativa_label,
                         )
                         emails_encontrados = re.findall(
@@ -241,16 +248,18 @@ class CoupaScraper:
                 if self.config_extrair.get("destino", False):
                     cidade_estado = "Não localizado"
                     endereco_label = await page.query_selector(
-                        "h3:has-text('Endereço de entrega'), div:has-text('Endereço de entrega'), td:has-text('Endereço')"
+                        "h3:has-text('Endereço de entrega'), div:has-text('Endereço de entrega'), "
+                        "td:has-text('Endereço')"
                     )
                     if endereco_label:
                         endereco_texto = await page.evaluate(
-                            "(element) => { let p = element.closest('.card, .section, table, div, td'); return p ? p.innerText : ''; }",
+                            "(element) => { let p = element.closest('.card, .section, table, div, td'); "
+                            "return p ? p.innerText : ''; }",
                             endereco_label,
                         )
                         if not endereco_texto.strip():
                             endereco_texto = await page.evaluate(
-                                "(element) => element.nextElementSibling ? element.nextElementSibling.innerText : element.innerText",
+                                _JS_NEXT_SIBLING_TEXT,
                                 endereco_label,
                             )
                         if endereco_texto:
@@ -268,9 +277,9 @@ class CoupaScraper:
                             if match_cep_cidade:
                                 cidade_estado = match_cep_cidade.group(1).strip()
                             else:
-                                linhas = [l.strip() for l in endereco_texto.split("\n") if l.strip()]
-                                for l in reversed(linhas):
-                                    match_l = re.search(r'^([A-Z\s]+?)\s+([A-Z]{2})$', l)
+                                linhas = [ln.strip() for ln in endereco_texto.split("\n") if ln.strip()]
+                                for linha in reversed(linhas):
+                                    match_l = re.search(r'^([A-Z\s]+?)\s+([A-Z]{2})$', linha)
                                     if match_l:
                                         cidade_estado = f"{match_l.group(1).strip()} / {match_l.group(2).strip()}"
                                         break

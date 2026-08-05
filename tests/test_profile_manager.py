@@ -1,6 +1,3 @@
-import json
-import pytest
-from pathlib import Path
 from unittest.mock import patch
 
 from modules.config import ProfileManager, encrypt_value, decrypt_value

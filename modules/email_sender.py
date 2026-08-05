@@ -9,7 +9,6 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 from typing import Dict, Any, List, Optional, Tuple
-from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -163,7 +162,9 @@ class EmailWorker(QThread):
         # Item 12: vetorizado com pandas em vez de iterrows()
         for col in candidate_columns:
             col_lower = df[col].astype(str).str.strip().str.lower()
-            mask = col_lower.str.contains(term_norm, regex=False, na=False) | col_lower.apply(lambda v: bool(v) and v in term_norm)
+            mask = col_lower.str.contains(term_norm, regex=False, na=False) | col_lower.apply(
+                lambda v: bool(v) and v in term_norm
+            )
             matches = df.loc[mask, email_columns[0]].dropna()
             matches = matches[matches.astype(str).str.strip() != ""]
             if not matches.empty:
@@ -268,14 +269,20 @@ class EmailWorker(QThread):
                                 self.log_signal.emit(f"📎 Anexado arquivo da pasta: {arquivo}")
 
             if send_mode == "smtp":
-                self._send_via_smtp(sender, password, smtp_server, port, destinatario_fornecedor, copias_cc, subject, html_body, attachments, item, req)
+                self._send_via_smtp(
+                    sender, password, smtp_server, port, destinatario_fornecedor,
+                    copias_cc, subject, html_body, attachments, item, req,
+                )
             else:
                 self._send_via_outlook(sender, destinatario_fornecedor, copias_cc, subject, html_body, attachments)
 
         password = None
         self.finished_signal.emit(True, "Processo finalizado.")
 
-    def _send_via_smtp(self, sender, password, smtp_server, port, destinatario_fornecedor, copias_cc, subject, html_body, attachments, item, req):
+    def _send_via_smtp(
+        self, sender, password, smtp_server, port, destinatario_fornecedor,
+        copias_cc, subject, html_body, attachments, item, req,
+    ):
         msg = MIMEMultipart()
         msg["From"] = sender
         msg["To"] = destinatario_fornecedor
