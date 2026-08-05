@@ -26,3 +26,6 @@ saida_pedidos_pdf/
 
 # Editor
 .vscode/
+
+# Scripts locais
+subir_github.bat

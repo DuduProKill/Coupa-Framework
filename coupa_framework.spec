@@ -4,7 +4,7 @@
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 datas = []
-datas += collect_data_files('fitz')          # PyMuPDF
+datas += collect_data_files('fitz')         # PyMuPDF
 datas += collect_data_files('PIL')
 datas += collect_data_files('numpy')
 datas += collect_data_files('pandas')
@@ -49,6 +49,8 @@ hiddenimports += [
     'email.mime.text',
     'email.mime.base',
     'email.encoders',
+    'logging.handlers',
+    'logging.config',
 ]
 
 a = Analysis(
@@ -106,7 +108,7 @@ exe = EXE(
         'node.exe',          # driver do Playwright
         'msedge*.dll',
     ],
-    console=False,           # Sem janela de console
+    console=False,            # Sem janela de console
     disable_windowed_traceback=False,
     target_arch=None,
     codesign_identity=None,

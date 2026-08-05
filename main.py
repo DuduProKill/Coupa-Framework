@@ -1,23 +1,38 @@
 import subprocess
 import sys
 import tempfile
+import traceback
 from pathlib import Path
 
 import requests
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QTabWidget, QStatusBar,
-    QLabel, QVBoxLayout, QWidget, QMessageBox, QPushButton, QHBoxLayout
+    QLabel, QVBoxLayout, QWidget, QMessageBox, QPushButton, QHBoxLayout,
+    QTextEdit
 )
 from PyQt6.QtCore import Qt
 from modules import (
     CoupaExtractorWidget, OrcamentoDownloaderWidget,
     PedidoPdfGeneratorWidget, RenomeadorWidget, OrganizadorWidget,
-    EmailSenderWidget, ProfileManagerWidget
+    EmailSenderWidget, ProfileManagerWidget, IMPORT_ERRORS
 )
 from modules.styles import APP_STYLESHEET
 from modules.playwright_pool import cleanup_playwright_pool
 from modules.updater import UpdateManager
 from modules.feature_selection import is_module_enabled
+
+
+# Mapeia a chave do módulo (usada em feature_selection) para o nome da classe
+# widget correspondente (usada como chave em modules.IMPORT_ERRORS).
+MODULE_KEY_TO_WIDGET_CLASS = {
+    "extrator": "CoupaExtractorWidget",
+    "downloader": "OrcamentoDownloaderWidget",
+    "pdf": "PedidoPdfGeneratorWidget",
+    "renomeador": "RenomeadorWidget",
+    "organizador": "OrganizadorWidget",
+    "email": "EmailSenderWidget",
+    "perfis": "ProfileManagerWidget",
+}
 
 
 def build_tab_title(module_key: str, enabled: bool) -> str:
@@ -35,10 +50,11 @@ def build_tab_title(module_key: str, enabled: bool) -> str:
 
 
 class LockedModuleWidget(QWidget):
-    def __init__(self, parent, module_key: str, module_label: str):
+    def __init__(self, parent, module_key: str, module_label: str, error_detail: str | None = None):
         super().__init__(parent)
         self.module_key = module_key
         self.module_label = module_label
+        self.error_detail = error_detail
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -52,23 +68,45 @@ class LockedModuleWidget(QWidget):
         title.setStyleSheet("font-size: 20px; font-weight: 700;")
         layout.addWidget(title, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        description = QLabel(
-            f"O módulo <b>{module_label}</b> não está instalado neste cliente."
-        )
+        if error_detail:
+            # Módulo deveria estar disponível, mas falhou ao carregar (dependência
+            # ausente, erro de import, etc). Mostra o motivo real em vez de
+            # apenas dizer "não instalado" — isso ajuda a diagnosticar no cliente.
+            description = QLabel(
+                f"O módulo <b>{module_label}</b> não pôde ser carregado neste PC "
+                f"devido a um erro interno (veja detalhes abaixo)."
+            )
+        else:
+            description = QLabel(
+                f"O módulo <b>{module_label}</b> não está instalado neste cliente."
+            )
         description.setWordWrap(True)
         description.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(description, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        button_row = QWidget()
-        button_row_layout = QHBoxLayout(button_row)
-        button_row_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        button_row_layout.addStretch()
+        if error_detail:
+            error_box = QTextEdit()
+            error_box.setReadOnly(True)
+            error_box.setPlainText(error_detail)
+            error_box.setFixedHeight(160)
+            error_box.setStyleSheet(
+                "font-family: Consolas, monospace; font-size: 11px; color: #ff7b72;"
+            )
+            layout.addWidget(error_box)
 
-        self.download_button = QPushButton("Baixar este módulo")
-        self.download_button.clicked.connect(self._on_download_requested)
-        button_row_layout.addWidget(self.download_button)
-        button_row_layout.addStretch()
-        layout.addWidget(button_row)
+        if not error_detail:
+            # Só faz sentido oferecer "baixar módulo" quando o módulo de fato não
+            # está instalado — não quando ele falhou ao carregar por um erro interno.
+            button_row = QWidget()
+            button_row_layout = QHBoxLayout(button_row)
+            button_row_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            button_row_layout.addStretch()
+
+            self.download_button = QPushButton("Baixar este módulo")
+            self.download_button.clicked.connect(self._on_download_requested)
+            button_row_layout.addWidget(self.download_button)
+            button_row_layout.addStretch()
+            layout.addWidget(button_row)
         layout.addStretch()
 
     def _on_download_requested(self):
@@ -133,13 +171,16 @@ class FrameworkApp(QMainWindow):
         self.setStatusBar(self.status_bar)
 
         # Instanciação das Abas
-        self.tab_coupa = CoupaExtractorWidget(self) if is_module_enabled("extrator") else None
-        self.tab_downloader = OrcamentoDownloaderWidget(self) if is_module_enabled("downloader") else None
-        self.tab_pdf_generator = PedidoPdfGeneratorWidget(self) if is_module_enabled("pdf") else None
-        self.tab_renomeador = RenomeadorWidget(self) if is_module_enabled("renomeador") else None
-        self.tab_organizador = OrganizadorWidget(self) if is_module_enabled("organizador") else None
-        self.tab_email_sender = EmailSenderWidget(self) if is_module_enabled("email") else None
-        self.tab_manage_profiles = ProfileManagerWidget(self) if is_module_enabled("perfis") else None
+        # Importante: só instanciamos se a classe realmente importou (não é None).
+        # Se um widget falhou ao importar (dependência ausente no PC, por ex.),
+        # ele cai automaticamente na aba bloqueada em vez de derrubar o app inteiro.
+        self.tab_coupa = self._safe_instantiate(CoupaExtractorWidget, "extrator")
+        self.tab_downloader = self._safe_instantiate(OrcamentoDownloaderWidget, "downloader")
+        self.tab_pdf_generator = self._safe_instantiate(PedidoPdfGeneratorWidget, "pdf")
+        self.tab_renomeador = self._safe_instantiate(RenomeadorWidget, "renomeador")
+        self.tab_organizador = self._safe_instantiate(OrganizadorWidget, "organizador")
+        self.tab_email_sender = self._safe_instantiate(EmailSenderWidget, "email")
+        self.tab_manage_profiles = self._safe_instantiate(ProfileManagerWidget, "perfis")
 
         self.locked_tabs = []
 
@@ -187,8 +228,26 @@ class FrameworkApp(QMainWindow):
         self._update_manager = UpdateManager(self)
         self._update_manager.start()
 
+    def _safe_instantiate(self, widget_class, module_key: str):
+        """Instancia o widget somente se a classe carregou de verdade (não é None)
+        e o módulo está habilitado. Nunca chama None(...), que é o que causava o
+        'NoneType' object is not callable ao rodar em outra máquina."""
+        if widget_class is None:
+            return None
+        if not is_module_enabled(module_key):
+            return None
+        try:
+            return widget_class(self)
+        except Exception:
+            error_text = traceback.format_exc()
+            IMPORT_ERRORS[module_key] = error_text
+            print(f"[ERRO] Falha ao inicializar o módulo '{module_key}':\n{error_text}")
+            return None
+
     def _add_locked_tab(self, module_key: str, label: str):
-        widget = LockedModuleWidget(self, module_key, label)
+        widget_class_name = MODULE_KEY_TO_WIDGET_CLASS.get(module_key, module_key)
+        error_detail = IMPORT_ERRORS.get(widget_class_name) or IMPORT_ERRORS.get(module_key)
+        widget = LockedModuleWidget(self, module_key, label, error_detail=error_detail)
         self.locked_tabs.append((module_key, widget))
         self.tab_widget.addTab(widget, build_tab_title(module_key, False))
 
@@ -199,7 +258,8 @@ class FrameworkApp(QMainWindow):
     def _on_locked_tab_selected(self, index: int):
         for module_key, widget in self.locked_tabs:
             if self.tab_widget.widget(index) is widget:
-                self.request_module_install(module_key)
+                if not getattr(widget, "error_detail", None):
+                    self.request_module_install(module_key)
                 break
 
     def request_module_install(self, module_key: str):

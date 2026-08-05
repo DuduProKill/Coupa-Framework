@@ -24,10 +24,12 @@ class PlaywrightPool:
 
     _instance: Optional["PlaywrightPool"] = None
     _lock = threading.Lock()
-    _async_lock: Optional[asyncio.Lock] = None
 
     def __init__(self):
         self._playwright = None
+        self._playwright_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._async_lock: Optional[asyncio.Lock] = None
+        self._lock_loop: Optional[asyncio.AbstractEventLoop] = None
         self._contexts: Dict[str, Any] = {}
         self._ref_count: Dict[str, int] = {}
 
@@ -40,18 +42,37 @@ class PlaywrightPool:
         return cls._instance
 
     async def _start_playwright(self):
-        """Inicializa o Playwright uma unica vez."""
+        """Inicializa o Playwright, recriando a conexao se o event loop mudou.
+
+        Cada worker (QThread) roda seu proprio event loop via
+        asyncio.new_event_loop(). A conexao do driver do Playwright fica
+        presa ao loop em que foi criada; reusa-la a partir de um loop
+        diferente quebra o transporte assincrono ("'NoneType' object has
+        no attribute 'send'" ao chamar launch_persistent_context). Por
+        isso, ao detectar troca de loop, descarta a conexao antiga (e os
+        contextos associados a ela, que tambem ficaram invalidos) em vez
+        de tentar reaproveitar.
+        """
+        current_loop = asyncio.get_running_loop()
+        if self._playwright is not None and self._playwright_loop is not current_loop:
+            self._playwright = None
+            self._contexts.clear()
+            self._ref_count.clear()
+
         if self._playwright is None:
             from playwright.async_api import async_playwright
             self._playwright = await async_playwright().start()
+            self._playwright_loop = current_loop
 
     async def get_context(self, user_data_dir: str, channel: str = "msedge",
                           headless: bool = False, **kwargs) -> Any:
         """Retorna um contexto persistente do Edge, reutilizando se possivel."""
-        if PlaywrightPool._async_lock is None:
-            PlaywrightPool._async_lock = asyncio.Lock()
+        current_loop = asyncio.get_running_loop()
+        if self._async_lock is None or self._lock_loop is not current_loop:
+            self._async_lock = asyncio.Lock()
+            self._lock_loop = current_loop
 
-        async with PlaywrightPool._async_lock:
+        async with self._async_lock:
             caminho_edge = resolve_edge_executable()
             context_key = user_data_dir
 
@@ -106,6 +127,7 @@ class PlaywrightPool:
             except Exception:
                 pass
             self._playwright = None
+            self._playwright_loop = None
 
 
 def cleanup_playwright_pool() -> None:

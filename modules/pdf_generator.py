@@ -1,6 +1,6 @@
-import os
 from datetime import datetime
 from pathlib import Path
+import time
 from typing import Dict, List
 
 import pandas as pd
@@ -13,7 +13,7 @@ from modules.config import (
     MARGENS_IMPRESSAO,
     URL_TESTE_LOGIN,
     URL_BASE_IMPRESSAO_PDF,
-    PERFIL_EDGE_PDF,
+    PERFIL_EDGE_DOWNLOAD,
     resolve_edge_executable,
 )
 from modules.playwright_pool import PlaywrightContextSyncManager
@@ -34,7 +34,6 @@ class PdfGeneratorWorker(QThread):
         self.pedidos = pedidos
         self.pasta_saida = Path(pasta_saida)
         self.requisicoes_por_pedido = requisicoes_por_pedido or {}
-        self.page = None
         self.cancelado = False
 
     def gerar_relatorio(self, resultados: Dict[str, Dict[str, str]]) -> Path:
@@ -66,29 +65,60 @@ class PdfGeneratorWorker(QThread):
         return caminho
 
     def run(self):
-        self.log_signal.emit(">>> Inicializando o ambiente do Edge...")
+        self.log_signal.emit(">>> Inicializando o ambiente do Edge para PDF...")
         self.pasta_saida.mkdir(parents=True, exist_ok=True)
 
         sucesso, sem_documento, falha = [], [], []
         resultados = {}
         total = len(self.pedidos)
 
+        # Aponta para o mesmo perfil de download para reaproveitar a sessão/cookies logados
+        user_data_dir = str(PERFIL_EDGE_DOWNLOAD)
+        caminho_edge = resolve_edge_executable()
+
+        if not caminho_edge or not Path(caminho_edge).exists():
+            self.log_signal.emit("❌ ERRO CRÍTICO: Caminho do Microsoft Edge não encontrado ou inválido.")
+            self.finished_signal.emit("Microsoft Edge não encontrado para geração de PDF.")
+            return
+
         try:
-            caminho_edge = resolve_edge_executable()
-            if not caminho_edge:
-                self.log_signal.emit("ERRO CRÍTICO: Microsoft Edge não encontrado para geração de PDF.")
-                self.finished_signal.emit("Microsoft Edge não encontrado para geração de PDF.")
-                return
+            # Utiliza o gerenciador síncrono blindado do pool
+            with PlaywrightContextSyncManager(
+                user_data_dir=user_data_dir
+            ) as context:
+                pages = context.pages
+                page = pages[0] if pages else context.new_page()
+                page.set_default_timeout(45000)
 
-            # Melhoria 4: usa PlaywrightContextSyncManager padronizado do pool.
-            # O 'with' gerencia o ciclo de vida completo (start/close/stop).
-            with PlaywrightContextSyncManager(user_data_dir=str(PERFIL_EDGE_PDF)) as context:
-                self.page = context.new_page()
-                self.page.goto(URL_TESTE_LOGIN, wait_until="networkidle")
+                try:
+                    page.goto(URL_TESTE_LOGIN, wait_until="domcontentloaded")
+                except Exception:
+                    pass
 
-                if "login" in self.page.url.lower() or self.page.query_selector("input[type='password']"):
+                try:
+                    page.wait_for_load_state("networkidle", timeout=8000)
+                except Exception:
+                    pass
+
+                deslogado = (
+                    "login" in page.url.lower()
+                    or "sso" in page.url.lower()
+                    or page.query_selector("input[type='password']") is not None
+                )
+
+                if not deslogado:
+                    self.log_signal.emit("✅ Sessão compartilhada ativa detectada automaticamente!")
+                else:
                     self.log_signal.emit("⚠️ Login necessário! Conclua o login corporativo na janela do Edge...")
-                    self.page.wait_for_url(lambda u: "login" not in u.lower(), timeout=300000)
+                    page.wait_for_function(
+                        """() => {
+                            const url = location.href.toLowerCase();
+                            return !url.includes('login')
+                                && !url.includes('sso')
+                                && !document.querySelector("input[type='password']");
+                        }""",
+                        timeout=300000,
+                    )
                     self.log_signal.emit("✅ Autenticado com sucesso no portal Coupa!")
 
                 self.log_signal.emit(f">>> Processando lote de {total} pedido(s)...")
@@ -101,11 +131,18 @@ class PdfGeneratorWorker(QThread):
                     self.log_signal.emit(f"📄 Abrindo leiaute de impressão para o Pedido #{ped}...")
 
                     try:
-                        self.page.goto(url_print, wait_until="networkidle", timeout=45000)
+                        page.goto(url_print, wait_until="domcontentloaded", timeout=45000)
+                        
+                        try:
+                            page.wait_for_load_state("load", timeout=5000)
+                        except Exception:
+                            pass
 
                         doc_pronto = False
                         for tentativa in range(1, MAX_TENTATIVAS + 1):
-                            conteudo = self.page.content().lower()
+                            time.sleep(0.5)
+                            
+                            conteudo = page.content().lower()
                             existe_erro = any(texto_err.lower() in conteudo for texto_err in TEXTOS_SEM_DOCUMENTO)
 
                             if not existe_erro:
@@ -116,13 +153,13 @@ class PdfGeneratorWorker(QThread):
                                 self.log_signal.emit(
                                     f"⏳ Documento do Pedido #{ped} ainda em processamento. Tentando recarregar em {ESPERA_ENTRE_TENTATIVAS}s..."
                                 )
-                                QThread.msleep(int(ESPERA_ENTRE_TENTATIVAS * 1000))
-                                self.page.reload(wait_until="networkidle")
+                                time.sleep(ESPERA_ENTRE_TENTATIVAS)
+                                page.reload(wait_until="domcontentloaded")
 
                         if doc_pronto:
-                            self.page.emulate_media(media="print")
+                            page.emulate_media(media="print")
                             destino_pdf = self.pasta_saida / f"{ped}.pdf"
-                            self.page.pdf(
+                            page.pdf(
                                 path=str(destino_pdf),
                                 format="A4",
                                 print_background=True,

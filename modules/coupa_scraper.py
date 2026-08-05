@@ -9,7 +9,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 from modules.config import (
     COUPA_BASE_URL,
-    DEFAULT_COUPA_PROFILE_DIR,
+    PERFIL_EDGE_DOWNLOAD,
     resolve_edge_executable,
 )
 from modules.playwright_pool import PlaywrightContextManager
@@ -62,7 +62,7 @@ class CoupaScraper:
             )
             return [{"Erro": "Microsoft Edge não encontrado."}]
 
-        user_data_dir = Path(DEFAULT_COUPA_PROFILE_DIR)
+        user_data_dir = Path(PERFIL_EDGE_DOWNLOAD)
         try:
             user_data_dir.mkdir(parents=True, exist_ok=True)
         except Exception as dir_err:

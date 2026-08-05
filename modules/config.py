@@ -28,7 +28,6 @@ class FrameworkSettings:
     map_fornecedores: Path = field(default_factory=lambda: Path(os.environ.get("MAP_FORNECEDORES", str(PROJECT_ROOT / "mapeamento_fornecedores.xlsx"))))
     map_unidades: Path = field(default_factory=lambda: Path(os.environ.get("MAP_UNIDADES", str(PROJECT_ROOT / "mapeamento_unidades.xlsx"))))
     pasta_saida_padrao_pdf: Path = field(default_factory=lambda: PROJECT_ROOT / "saida_pedidos_pdf")
-    perfil_edge_pdf: Path = field(default_factory=lambda: Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "GeradorPedidosCoupaFW" / "PerfilEdgeAutomacao")
     perfil_edge_download: Path = field(default_factory=lambda: Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "CoupaFramework" / "PerfilEdgeDownload")
     historico_renomeador: Path = field(default_factory=lambda: Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "CoupaFramework" / "historico_renomeador.csv")
     url_teste_login: str = ""
@@ -50,7 +49,6 @@ COUPA_BASE_URL = SETTINGS.coupa_base_url
 MAP_FORNECEDORES = SETTINGS.map_fornecedores
 MAP_UNIDADES = SETTINGS.map_unidades
 PASTA_SAIDA_PADRAO_PDF = SETTINGS.pasta_saida_padrao_pdf
-PERFIL_EDGE_PDF = SETTINGS.perfil_edge_pdf
 PERFIL_EDGE_DOWNLOAD = SETTINGS.perfil_edge_download
 HISTORICO_RENOMEADOR = SETTINGS.historico_renomeador
 URL_TESTE_LOGIN = SETTINGS.url_teste_login
@@ -73,8 +71,6 @@ def resolve_edge_executable() -> str | None:
             return str(Path(candidate))
     return None
 
-
-DEFAULT_COUPA_PROFILE_DIR = Path.home() / "Coupa_Bot_Profile"
 
 # ---- Crypto helpers for ProfileManager ----
 

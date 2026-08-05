@@ -144,9 +144,18 @@ end;
 function SaveModuleSelection(): Boolean;
 var
   ModuleFileName: String;
+  ModuleDir: String;
   ModuleJson: String;
 begin
   ModuleFileName := ExpandConstant('{app}\module_selection.json');
+  ModuleDir := ExtractFileDir(ModuleFileName);
+
+  // Garante que o diretório de destino exista antes de tentar salvar o arquivo
+  if not DirExists(ModuleDir) then
+  begin
+    ForceDirectories(ModuleDir);
+  end;
+
   ModuleJson := '{' + #13#10 +
     '  "extrator": ' + BoolToJsonString(ModuleSelectionPage.Values[0]) + ',' + #13#10 +
     '  "downloader": ' + BoolToJsonString(ModuleSelectionPage.Values[1]) + ',' + #13#10 +
