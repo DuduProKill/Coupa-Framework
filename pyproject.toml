@@ -8,3 +8,4 @@ ignore = ["B904", "B006"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
