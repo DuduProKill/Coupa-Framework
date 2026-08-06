@@ -11,9 +11,9 @@ from modules.config import (
     ESPERA_ENTRE_TENTATIVAS,
     TEXTOS_SEM_DOCUMENTO,
     MARGENS_IMPRESSAO,
-    URL_TESTE_LOGIN,
-    URL_BASE_IMPRESSAO_PDF,
     PERFIL_EDGE_DOWNLOAD,
+    get_url_teste_login,
+    get_url_base_impressao_pdf,
     resolve_edge_executable,
 )
 from modules.playwright_pool import PlaywrightContextSyncManager
@@ -91,7 +91,7 @@ class PdfGeneratorWorker(QThread):
                 page.set_default_timeout(45000)
 
                 try:
-                    page.goto(URL_TESTE_LOGIN, wait_until="domcontentloaded")
+                    page.goto(get_url_teste_login(), wait_until="domcontentloaded")
                 except Exception:
                     pass
 
@@ -127,7 +127,7 @@ class PdfGeneratorWorker(QThread):
                     if self.cancelado:
                         break
 
-                    url_print = URL_BASE_IMPRESSAO_PDF.format(pedido=ped)
+                    url_print = get_url_base_impressao_pdf(ped)
                     self.log_signal.emit(f"📄 Abrindo leiaute de impressão para o Pedido #{ped}...")
 
                     try:

@@ -16,6 +16,7 @@ except ImportError:
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_FILE = PROJECT_ROOT / "coupa_profiles.json"
+INSTANCE_CONFIG_FILE = PROJECT_ROOT / "coupa_instance.json"
 
 
 @dataclass(frozen=True)
@@ -46,8 +47,6 @@ class FrameworkSettings:
         / "CoupaFramework"
         / "historico_renomeador.csv"
     )
-    url_teste_login: str = ""
-    url_base_impressao_pdf: str = ""
     textos_sem_documento: tuple[str, ...] = ("AGUARDE, EM PROCESSAMENTO!",)
     margens_impressao: Dict[str, str] = field(
         default_factory=lambda: {"top": "0.4in", "bottom": "0.4in", "left": "0.4in", "right": "0.4in"}
@@ -58,14 +57,6 @@ class FrameworkSettings:
         "orçamento", "orcamento", "proposta", "cotação", "cotacao", "quotation", "budget",
     )
 
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "url_teste_login", f"{self.coupa_base_url.rstrip('/')}/")
-        object.__setattr__(
-            self,
-            "url_base_impressao_pdf",
-            f"{self.coupa_base_url.rstrip('/')}/order_headers/show_custom/{{pedido}}?version=1",
-        )
-
 
 SETTINGS = FrameworkSettings()
 
@@ -75,13 +66,59 @@ MAP_UNIDADES = SETTINGS.map_unidades
 PASTA_SAIDA_PADRAO_PDF = SETTINGS.pasta_saida_padrao_pdf
 PERFIL_EDGE_DOWNLOAD = SETTINGS.perfil_edge_download
 HISTORICO_RENOMEADOR = SETTINGS.historico_renomeador
-URL_TESTE_LOGIN = SETTINGS.url_teste_login
-URL_BASE_IMPRESSAO_PDF = SETTINGS.url_base_impressao_pdf
 TEXTOS_SEM_DOCUMENTO = SETTINGS.textos_sem_documento
 MARGENS_IMPRESSAO = SETTINGS.margens_impressao
 MAX_TENTATIVAS = SETTINGS.max_tentativas
 ESPERA_ENTRE_TENTATIVAS = SETTINGS.espera_entre_tentativas
 PALAVRAS_CHAVE = SETTINGS.palavras_chave
+
+
+def _normalize_coupa_base_url(url: str) -> str:
+    url = (url or "").strip()
+    if not url:
+        return url
+    if not url.startswith(("http://", "https://")):
+        url = f"https://{url}"
+    return url.rstrip("/")
+
+
+def _load_coupa_instance_override() -> str:
+    """Lê a instância do Coupa declarada pelo usuário via UI (Gerenciar Perfis), se houver."""
+    if not INSTANCE_CONFIG_FILE.exists():
+        return ""
+    try:
+        with open(INSTANCE_CONFIG_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return str(data.get("coupa_base_url", "")).strip()
+    except (json.JSONDecodeError, OSError):
+        return ""
+
+
+def get_saved_coupa_instance() -> str:
+    """Retorna a instância salva pelo usuário via UI, ou string vazia se nunca foi declarada."""
+    return _load_coupa_instance_override()
+
+
+def get_coupa_base_url() -> str:
+    """Retorna a instância do Coupa em uso: a declarada pelo usuário na UI tem prioridade
+    sobre a variável de ambiente COUPA_BASE_URL / valor padrão de placeholder."""
+    return _load_coupa_instance_override() or COUPA_BASE_URL
+
+
+def set_coupa_base_url(url: str) -> str:
+    """Salva a instância do Coupa declarada pelo usuário na UI. Retorna a URL normalizada."""
+    normalized = _normalize_coupa_base_url(url)
+    with open(INSTANCE_CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump({"coupa_base_url": normalized}, f, indent=2, ensure_ascii=False)
+    return normalized
+
+
+def get_url_teste_login() -> str:
+    return f"{get_coupa_base_url().rstrip('/')}/"
+
+
+def get_url_base_impressao_pdf(pedido: str) -> str:
+    return f"{get_coupa_base_url().rstrip('/')}/order_headers/show_custom/{pedido}?version=1"
 
 
 def resolve_edge_executable() -> str | None:

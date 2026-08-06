@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import pyqtSignal
 
-from modules.config import ProfileManager
+from modules.config import ProfileManager, get_saved_coupa_instance, set_coupa_base_url
 from modules.styles import set_status, scrollable
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,29 @@ class ProfileManagerWidget(QWidget):
 
         left_container = QWidget()
         left_panel = QVBoxLayout(left_container)
+
+        instance_group = QGroupBox("Instância do Coupa")
+        instance_layout = QVBoxLayout()
+        instance_layout.addWidget(QLabel(
+            "Endereço do Coupa da sua empresa (o mesmo que aparece na barra do navegador "
+            "quando você acessa o Coupa):"
+        ))
+        instance_row = QHBoxLayout()
+        self.txt_coupa_instance = QLineEdit()
+        self.txt_coupa_instance.setPlaceholderText("ex.: suaempresa.coupahost.com")
+        self.txt_coupa_instance.setText(get_saved_coupa_instance())
+        self.btn_save_instance = QPushButton("Salvar Instância")
+        self.btn_save_instance.setObjectName("btnSuccess")
+        self.btn_save_instance.clicked.connect(self.save_coupa_instance)
+        instance_row.addWidget(self.txt_coupa_instance, 1)
+        instance_row.addWidget(self.btn_save_instance)
+        instance_layout.addLayout(instance_row)
+        self.lbl_instance_status = QLabel("")
+        set_status(self.lbl_instance_status, "muted")
+        instance_layout.addWidget(self.lbl_instance_status)
+        instance_group.setLayout(instance_layout)
+        left_panel.addWidget(instance_group)
+
         profile_group = QGroupBox("Perfis de Automação")
         profile_layout = QVBoxLayout()
 
@@ -100,6 +123,20 @@ class ProfileManagerWidget(QWidget):
         right_panel.addWidget(QLabel("3. Use o perfil na Aba de Extração ou de Envio de E-mail."))
         right_panel.addStretch(1)
         layout.addLayout(right_panel, 2)
+
+    def save_coupa_instance(self):
+        valor = self.txt_coupa_instance.text().strip()
+        if not valor:
+            QMessageBox.warning(self, "Aviso", "Informe o endereço da sua instância do Coupa.")
+            return
+        try:
+            normalizado = set_coupa_base_url(valor)
+        except Exception as exc:
+            logger.exception("Falha ao salvar instância do Coupa")
+            QMessageBox.critical(self, "Erro", f"Não foi possível salvar a instância: {exc}")
+            return
+        self.txt_coupa_instance.setText(normalizado)
+        set_status(self.lbl_instance_status, "success", f"Instância salva: {normalizado}")
 
     def load_profiles(self):
         self.profiles = ProfileManager.load_profiles() or {}

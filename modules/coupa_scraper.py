@@ -7,8 +7,8 @@ from pathlib import Path
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from modules.config import (
-    COUPA_BASE_URL,
     PERFIL_EDGE_DOWNLOAD,
+    get_coupa_base_url,
     resolve_edge_executable,
 )
 from modules.playwright_pool import PlaywrightContextManager
@@ -106,12 +106,13 @@ class CoupaScraper:
         extracted_data: List[Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
         """Executa a extração das requisições dentro de um contexto gerenciado."""
+        coupa_base_url = get_coupa_base_url()
         pages = context.pages
         page = pages[0] if pages else await context.new_page()
         page.set_default_timeout(5000)
 
         try:
-            await page.goto(COUPA_BASE_URL, wait_until="domcontentloaded", timeout=30000)
+            await page.goto(coupa_base_url, wait_until="domcontentloaded", timeout=30000)
         except Exception as e:
             log_callback(f"Não foi possível abrir a página inicial do Coupa: {str(e)}")
 
@@ -121,7 +122,7 @@ class CoupaScraper:
 
         for idx, req in enumerate(self.requisicoes, 1):
             await self.aguardar_retomada(log_callback)
-            url_requisicao = f"{COUPA_BASE_URL.rstrip('/')}/requisition_headers/{req.strip()}"
+            url_requisicao = f"{coupa_base_url.rstrip('/')}/requisition_headers/{req.strip()}"
             log_callback(f"[{idx}/{len(self.requisicoes)}] Acessando Requisição #{req}...")
 
             try:

@@ -11,7 +11,7 @@ from openpyxl import load_workbook
 from pptx import Presentation
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from modules.config import COUPA_BASE_URL, PALAVRAS_CHAVE, PERFIL_EDGE_DOWNLOAD
+from modules.config import PALAVRAS_CHAVE, PERFIL_EDGE_DOWNLOAD, get_coupa_base_url
 from modules.playwright_pool import PlaywrightContextManager
 
 
@@ -163,6 +163,7 @@ class DownloadScraper:
             return False
 
     async def _processar(self, context, log_callback, progress_req_callback, progress_down_callback) -> bool:
+        coupa_base_url = get_coupa_base_url()
         pages = context.pages
         page = pages[0] if pages else await context.new_page()
 
@@ -171,7 +172,7 @@ class DownloadScraper:
             if self.cancelado:
                 break
 
-            url = f"{COUPA_BASE_URL.rstrip('/')}/requisition_headers/{req.strip()}"
+            url = f"{coupa_base_url.rstrip('/')}/requisition_headers/{req.strip()}"
             log_callback(f"📂 Processando requisição #{req}...")
 
             try:
