@@ -2,7 +2,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![PyQt6](https://img.shields.io/badge/GUI-PyQt6-41CD52)](https://www.riverbankcomputing.com/software/pyqt/)
-[![CI](https://github.com/DuduProKill/Framework/actions/workflows/ci.yml/badge.svg)](https://github.com/DuduProKill/Framework/actions/workflows/ci.yml)
+[![CI](https://github.com/RafaelSilvaWork/Coupa-Framework/actions/workflows/ci.yml/badge.svg)](https://github.com/RafaelSilvaWork/Coupa-Framework/actions/workflows/ci.yml)
 
 Coupa Framework é uma aplicação desktop em Python para automatizar fluxos operacionais relacionados a compras e supply chain na plataforma Coupa.
 
@@ -43,7 +43,7 @@ O projeto reúne em uma interface única as etapas de:
 ## Instalação
 
 ```bash
-git clone https://github.com/DuduProKill/Framework
+git clone https://github.com/RafaelSilvaWork/Coupa-Framework
 cd "CoupaFramework v1.1"
 python -m venv .venv
 .venv\Scripts\activate
