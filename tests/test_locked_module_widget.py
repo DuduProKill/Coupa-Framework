@@ -17,7 +17,9 @@ def test_shows_download_button_when_module_not_installed(qt_app):
 
 
 def test_shows_reinstall_button_and_error_box_when_load_failed(qt_app):
-    widget = LockedModuleWidget(None, "email", "Disparo de E-mails", error_detail="Traceback (most recent call last)...")
+    widget = LockedModuleWidget(
+        None, "email", "Disparo de E-mails", error_detail="Traceback (most recent call last)..."
+    )
 
     assert widget.download_button.text() == "Reinstalar módulo"
 
