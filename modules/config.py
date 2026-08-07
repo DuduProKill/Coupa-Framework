@@ -18,6 +18,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_FILE = PROJECT_ROOT / "coupa_profiles.json"
 INSTANCE_CONFIG_FILE = PROJECT_ROOT / "coupa_instance.json"
 
+# Connection string do Azure Application Insights usada para telemetria de erros.
+# Fica vazia em código-fonte (telemetria desligada) — o workflow de release no
+# GitHub Actions substitui esta linha pelo valor do secret APPINSIGHTS_CONNECTION_STRING
+# antes de compilar o executável, então o valor real nunca fica no histórico do git.
+APPINSIGHTS_CONNECTION_STRING = ""
+
 
 @dataclass(frozen=True)
 class FrameworkSettings:

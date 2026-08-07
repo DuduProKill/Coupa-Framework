@@ -17,6 +17,7 @@ from modules.playwright_pool import cleanup_playwright_pool
 from modules.updater import UpdateManager
 from modules.feature_selection import is_module_enabled
 from modules.module_installer import ModuleInstallWorker
+from modules.telemetry import init_telemetry
 
 
 # Mapeia a chave do módulo (usada em feature_selection) para o nome da classe
@@ -310,6 +311,7 @@ class FrameworkApp(QMainWindow):
 
 
 if __name__ == "__main__":
+    init_telemetry()
     app = QApplication(sys.argv)
     app.setStyleSheet(APP_STYLESHEET)
     window = FrameworkApp()

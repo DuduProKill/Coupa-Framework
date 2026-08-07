@@ -49,12 +49,6 @@ Filename: "{app}\CoupaFramework.exe"; Description: "Iniciar Coupa Framework agor
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
 
-[UninstallRun]
-; Oferece limpeza opcional dos dados do usuário ao desinstalar
-Filename: "{cmd}"; Parameters: "/C rmdir /s /q ""{userappdata}\CoupaFramework"""; \
-  StatusMsg: "Removendo dados do usuário..."; Flags: runhidden; \
-  Check: ConfirmarLimpezaDados
-
 [Code]
 var
   ModuleSelectionPage: TInputOptionWizardPage;
@@ -67,6 +61,22 @@ begin
     '(Logs, histórico de renomeação e configurações locais serão apagados)',
     mbConfirmation, MB_YESNO
   ) = IDYES;
+end;
+
+// Importante: o parâmetro "Check:" de [UninstallRun] é avaliado durante a
+// INSTALAÇÃO (na etapa "Salvando informações de desinstalação..."), não na
+// hora de desinstalar — por isso a pergunta aparecia mesmo na primeira
+// instalação. O jeito certo de perguntar algo só na hora real de desinstalar
+// é aqui, em CurUninstallStepChanged, que roda dentro do desinstalador.
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    if ConfirmarLimpezaDados() then
+    begin
+      DelTree(ExpandConstant('{userappdata}\CoupaFramework'), True, True, True);
+    end;
+  end;
 end;
 
 function GetRequestedModuleName(): String;

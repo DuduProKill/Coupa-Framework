@@ -14,3 +14,4 @@ cryptography==49.0.0
 filelock==3.32.0
 python-dotenv==1.2.2
 requests==2.34.2
+opencensus-ext-azure==1.1.15

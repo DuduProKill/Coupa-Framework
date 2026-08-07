@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip install pyinstaller
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip install -r requirements.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Preparar telemetria (Application Insights, opcional)
+        env:
+          APPINSIGHTS_CONNECTION_STRING: ${{ secrets.APPINSIGHTS_CONNECTION_STRING }}
+        run: |
+          # Substitui o valor vazio commitado em modules/config.py pelo secret do
+          # repositorio antes de compilar, para o valor real nunca ficar no git.
+          # Se o secret nao estiver configurado ainda, isso vira um no-op seguro
+          # (telemetria continua desligada).
+          $escaped = $env:APPINSIGHTS_CONNECTION_STRING -replace '"', '\"' -replace '\$', '$$'
+          $replacement = 'APPINSIGHTS_CONNECTION_STRING = "' + $escaped + '"'
+          (Get-Content modules\config.py) -replace 'APPINSIGHTS_CONNECTION_STRING = ".*"', $replacement | Set-Content modules\config.py
+
+      - name: Compilar executavel com PyInstaller
+        run: |
+          if (Test-Path "dist\CoupaFramework") { Remove-Item -Recurse -Force "dist\CoupaFramework" }
+          if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
+          python -m PyInstaller coupa_framework.spec --noconfirm --clean
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Remover arquivos nao usados do pacote
+        run: |
+          Remove-Item -Recurse -Force "dist\CoupaFramework\_internal\playwright\driver\package\.local-browsers" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "dist\CoupaFramework\_internal\PyQt6\Qt6\translations" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "dist\CoupaFramework\_internal\PyQt6\Qt6\plugins\sqldrivers" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "dist\CoupaFramework\_internal\PyQt6\Qt6\plugins\imageformats" -ErrorAction SilentlyContinue
+
+      - name: Instalar Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Compilar instalador
+        run: |
+          if (-not (Test-Path "installer_output")) { New-Item -ItemType Directory -Path "installer_output" | Out-Null }
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Publicar release no GitHub
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $installer = Get-ChildItem "installer_output\CoupaFramework_Setup_*.exe" | Select-Object -First 1
+          if (-not $installer) {
+              Write-Error "Instalador nao encontrado em installer_output\"
+              exit 1
+          }
+          gh release create $tag $installer.FullName `
+            --title "Coupa Framework $tag" `
+            --notes "Versao $tag. Baixe o instalador e execute. Se ja tiver instalado, atualiza automaticamente." `
+            --latest

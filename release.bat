@@ -6,6 +6,10 @@ echo ============================================================
 echo  Coupa Framework - Publicar Nova Versao
 echo ============================================================
 echo.
+echo O build do instalador e a publicacao no GitHub agora sao feitos
+echo automaticamente pelo workflow .github\workflows\release.yml assim
+echo que a tag for enviada. Este script so cuida do versionamento.
+echo.
 
 :: Verifica gh CLI
 gh --version > nul 2>&1
@@ -32,8 +36,30 @@ if "%VERSION%"=="" (
     exit /b 1
 )
 
+:: Verifica se essa versao ja existe (tag local ou release no GitHub) ANTES de
+:: bumpar versao e commitar - falha rapido em vez de so quando o CI publicar.
 echo.
-echo [1/5] Atualizando versao para %VERSION%...
+echo Verificando se a versao v%VERSION% ja existe...
+
+git rev-parse "v%VERSION%" >nul 2>&1
+if %errorlevel% equ 0 (
+    echo [ERRO] A tag "v%VERSION%" ja existe localmente no Git.
+    echo Escolha outro numero de versao ou apague a tag antiga com: git tag -d v%VERSION%
+    pause
+    exit /b 1
+)
+
+gh release view "v%VERSION%" >nul 2>&1
+if %errorlevel% equ 0 (
+    echo [ERRO] Ja existe uma release "v%VERSION%" publicada no GitHub.
+    echo Escolha outro numero de versao.
+    pause
+    exit /b 1
+)
+echo       OK, versao disponivel.
+
+echo.
+echo [1/2] Atualizando versao para %VERSION%...
 
 :: Atualiza CURRENT_VERSION no updater.py
 powershell -Command "(Get-Content modules\updater.py) -replace 'CURRENT_VERSION = \".*\"', 'CURRENT_VERSION = \"%VERSION%\"' | Set-Content modules\updater.py"
@@ -44,7 +70,7 @@ powershell -Command "(Get-Content installer.iss) -replace 'AppVersion=.*', 'AppV
 echo       OK
 
 echo.
-echo [2/5] Commit e tag no Git...
+echo [2/2] Commit e tag no Git...
 git add modules\updater.py installer.iss
 git commit -m "chore: bump version to v%VERSION%"
 git tag "v%VERSION%"
@@ -58,39 +84,9 @@ if %errorlevel% neq 0 (
 echo       OK
 
 echo.
-echo [3/5] Buildando o instalador...
-call build_installer.bat
-if %errorlevel% neq 0 (
-    echo [ERRO] Falha no build.
-    pause
-    exit /b 1
-)
-
-echo.
-echo [4/5] Localizando instalador gerado...
-set "INSTALLER="
-for %%F in (installer_output\CoupaFramework_Setup_v%VERSION%.exe) do set "INSTALLER=%%F"
-
-if not defined INSTALLER (
-    echo [ERRO] Instalador nao encontrado em installer_output\
-    echo Verifique se o Inno Setup esta instalado e o build foi concluido.
-    pause
-    exit /b 1
-)
-echo       Encontrado: %INSTALLER%
-
-echo.
-echo [5/5] Publicando release no GitHub...
-gh release create "v%VERSION%" "%INSTALLER%" --title "Coupa Framework v%VERSION%" --notes "Versao v%VERSION%. Baixe o instalador e execute. Se ja tiver instalado, atualiza automaticamente." --latest
-if %errorlevel% neq 0 (
-    echo [ERRO] Falha ao publicar release no GitHub.
-    pause
-    exit /b 1
-)
-
-echo.
 echo ============================================================
-echo  SUCESSO! Release v%VERSION% publicada no GitHub.
-echo  Os usuarios serao notificados na proxima abertura do app.
+echo  Tag v%VERSION% enviada! O GitHub Actions vai buildar e publicar
+echo  a release sozinho em poucos minutos.
+echo  Acompanhe em: https://github.com/DuduProKill/Coupa-Framework/actions
 echo ============================================================
 pause
