@@ -42,7 +42,9 @@ Name: "{group}\Desinstalar Coupa Framework"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\Coupa Framework"; Filename: "{app}\CoupaFramework.exe"; IconFilename: "{app}\icon.ico"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\CoupaFramework.exe"; Description: "Iniciar Coupa Framework agora"; Flags: nowait postinstall skipifsilent
+; Sem "skipifsilent": também relança o app automaticamente após uma instalação
+; silenciosa (/VERYSILENT), usada pelo fluxo "Baixar este módulo" dentro do app.
+Filename: "{app}\CoupaFramework.exe"; Description: "Iniciar Coupa Framework agora"; Flags: nowait postinstall
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
@@ -84,6 +86,34 @@ begin
   end;
 end;
 
+// Lê o valor previamente salvo de um módulo em {app}\module_selection.json,
+// para não desmarcar (e apagar os arquivos de) módulos já instalados quando
+// o instalador é reaberto só para adicionar UM módulo específico.
+function ReadModuleValueFromJson(ModuleKey: String; DefaultValue: Boolean): Boolean;
+var
+  FileName: String;
+  Lines: TArrayOfString;
+  Index: Integer;
+  SearchKey: String;
+begin
+  Result := DefaultValue;
+  FileName := ExpandConstant('{app}\module_selection.json');
+  if not FileExists(FileName) then
+    Exit;
+  if not LoadStringsFromFile(FileName, Lines) then
+    Exit;
+
+  SearchKey := '"' + ModuleKey + '":';
+  for Index := 0 to GetArrayLength(Lines) - 1 do
+  begin
+    if Pos(SearchKey, Lines[Index]) > 0 then
+    begin
+      Result := Pos('true', Lines[Index]) > 0;
+      Exit;
+    end;
+  end;
+end;
+
 procedure InitializeWizard();
 begin
   RequestedModuleName := GetRequestedModuleName();
@@ -103,34 +133,25 @@ begin
   ModuleSelectionPage.Add('Disparo de E-mails');
   ModuleSelectionPage.Add('Gerenciar Perfis');
 
-  if RequestedModuleName <> '' then
-  begin
-    ModuleSelectionPage.Values[0] := False;
-    ModuleSelectionPage.Values[1] := False;
-    ModuleSelectionPage.Values[2] := False;
-    ModuleSelectionPage.Values[3] := False;
-    ModuleSelectionPage.Values[4] := False;
-    ModuleSelectionPage.Values[5] := False;
-    ModuleSelectionPage.Values[6] := False;
+  // Pré-popula com a seleção já instalada (se houver), preservando módulos
+  // que o usuário já tinha habilitado em instalações anteriores.
+  ModuleSelectionPage.Values[0] := ReadModuleValueFromJson('extrator', True);
+  ModuleSelectionPage.Values[1] := ReadModuleValueFromJson('downloader', True);
+  ModuleSelectionPage.Values[2] := ReadModuleValueFromJson('pdf', True);
+  ModuleSelectionPage.Values[3] := ReadModuleValueFromJson('renomeador', True);
+  ModuleSelectionPage.Values[4] := ReadModuleValueFromJson('organizador', True);
+  ModuleSelectionPage.Values[5] := ReadModuleValueFromJson('email', True);
+  ModuleSelectionPage.Values[6] := ReadModuleValueFromJson('perfis', True);
 
-    if RequestedModuleName = 'extrator' then ModuleSelectionPage.Values[0] := True;
-    if RequestedModuleName = 'downloader' then ModuleSelectionPage.Values[1] := True;
-    if RequestedModuleName = 'pdf' then ModuleSelectionPage.Values[2] := True;
-    if RequestedModuleName = 'renomeador' then ModuleSelectionPage.Values[3] := True;
-    if RequestedModuleName = 'organizador' then ModuleSelectionPage.Values[4] := True;
-    if RequestedModuleName = 'email' then ModuleSelectionPage.Values[5] := True;
-    if RequestedModuleName = 'perfis' then ModuleSelectionPage.Values[6] := True;
-  end
-  else
-  begin
-    ModuleSelectionPage.Values[0] := True;
-    ModuleSelectionPage.Values[1] := True;
-    ModuleSelectionPage.Values[2] := True;
-    ModuleSelectionPage.Values[3] := True;
-    ModuleSelectionPage.Values[4] := True;
-    ModuleSelectionPage.Values[5] := True;
-    ModuleSelectionPage.Values[6] := True;
-  end;
+  // Se um módulo específico foi solicitado (via /MODULE=xxx), garante que ele
+  // fique marcado — sem desmarcar os módulos que já estavam habilitados.
+  if RequestedModuleName = 'extrator' then ModuleSelectionPage.Values[0] := True;
+  if RequestedModuleName = 'downloader' then ModuleSelectionPage.Values[1] := True;
+  if RequestedModuleName = 'pdf' then ModuleSelectionPage.Values[2] := True;
+  if RequestedModuleName = 'renomeador' then ModuleSelectionPage.Values[3] := True;
+  if RequestedModuleName = 'organizador' then ModuleSelectionPage.Values[4] := True;
+  if RequestedModuleName = 'email' then ModuleSelectionPage.Values[5] := True;
+  if RequestedModuleName = 'perfis' then ModuleSelectionPage.Values[6] := True;
 end;
 
 function BoolToJsonString(Value: Boolean): String;
@@ -171,17 +192,6 @@ begin
   begin
     MsgBox('Não foi possível salvar a seleção de módulos do instalador.', mbError, MB_OK);
   end;
-end;
-
-function NextButtonClick(CurPageID: Integer): Boolean;
-begin
-  if CurPageID = ModuleSelectionPage.ID then
-  begin
-    Result := SaveModuleSelection();
-    Exit;
-  end;
-
-  Result := True;
 end;
 
 function RemoveUnselectedModuleFiles(): Boolean;
@@ -238,6 +248,10 @@ procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
+    // Salva a seleção aqui (em vez de em NextButtonClick) para funcionar tanto
+    // em instalação interativa quanto em instalação silenciosa (/VERYSILENT),
+    // já que o assistente não é navegado nesse último caso.
+    SaveModuleSelection();
     RemoveUnselectedModuleFiles();
   end;
 end;

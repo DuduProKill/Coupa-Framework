@@ -1,16 +1,12 @@
-import subprocess
 import sys
-import tempfile
 import traceback
-from pathlib import Path
 
-import requests
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QTabWidget, QStatusBar,
-    QLabel, QVBoxLayout, QWidget, QMessageBox, QPushButton, QHBoxLayout,
-    QTextEdit
+    QLabel, QVBoxLayout, QWidget, QPushButton, QHBoxLayout,
+    QTextEdit, QProgressBar
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from modules import (
     CoupaExtractorWidget, OrcamentoDownloaderWidget,
     PedidoPdfGeneratorWidget, RenomeadorWidget, OrganizadorWidget,
@@ -20,6 +16,7 @@ from modules.styles import APP_STYLESHEET
 from modules.playwright_pool import cleanup_playwright_pool
 from modules.updater import UpdateManager
 from modules.feature_selection import is_module_enabled
+from modules.module_installer import ModuleInstallWorker
 
 
 # Mapeia a chave do módulo (usada em feature_selection) para o nome da classe
@@ -107,10 +104,62 @@ class LockedModuleWidget(QWidget):
             button_row_layout.addWidget(self.download_button)
             button_row_layout.addStretch()
             layout.addWidget(button_row)
+
+            self.progress_bar = QProgressBar()
+            self.progress_bar.setFixedWidth(320)
+            self.progress_bar.setVisible(False)
+            layout.addWidget(self.progress_bar, alignment=Qt.AlignmentFlag.AlignCenter)
+
+            self.lbl_install_status = QLabel("")
+            self.lbl_install_status.setWordWrap(True)
+            self.lbl_install_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.lbl_install_status.setVisible(False)
+            layout.addWidget(self.lbl_install_status)
+
+            self._install_worker: ModuleInstallWorker | None = None
         layout.addStretch()
 
     def _on_download_requested(self):
-        self.parent().request_module_install(self.module_key)
+        self.download_button.setEnabled(False)
+        self.download_button.setText("Instalando...")
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setVisible(True)
+        self.lbl_install_status.setText("Preparando instalação...")
+        self.lbl_install_status.setVisible(True)
+
+        self._install_worker = ModuleInstallWorker(self.module_key)
+        self._install_worker.progress_signal.connect(self._on_install_progress)
+        self._install_worker.finished_signal.connect(self._on_install_finished)
+        self._install_worker.start()
+
+    def _on_install_progress(self, percentual: int, mensagem: str):
+        if percentual >= 0:
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(percentual)
+        else:
+            self.progress_bar.setRange(0, 0)
+        self.lbl_install_status.setText(mensagem)
+
+    def _on_install_finished(self, sucesso: bool, mensagem: str):
+        if not sucesso:
+            self.progress_bar.setVisible(False)
+            self.lbl_install_status.setText(f"❌ {mensagem}")
+            self.download_button.setEnabled(True)
+            self.download_button.setText("Baixar este módulo")
+            return
+
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(100)
+        self.lbl_install_status.setText(
+            "✅ Instalação iniciada! O aplicativo será fechado automaticamente em instantes "
+            "para concluir a instalação e reaberto sozinho em seguida."
+        )
+        QTimer.singleShot(3000, self._fechar_aplicativo)
+
+    def _fechar_aplicativo(self):
+        # Fecha a janela principal (não só QApplication.quit()) para que o
+        # closeEvent rode e libere os contextos do PlaywrightPool normalmente.
+        self.window().close()
 
 
 class FrameworkApp(QMainWindow):
@@ -182,8 +231,6 @@ class FrameworkApp(QMainWindow):
         self.tab_email_sender = self._safe_instantiate(EmailSenderWidget, "email")
         self.tab_manage_profiles = self._safe_instantiate(ProfileManagerWidget, "perfis")
 
-        self.locked_tabs = []
-
         # Adiciona os módulos ao Framework
         if self.tab_coupa is not None:
             self.tab_widget.addTab(self.tab_coupa, "📦  Extrator Inteligente")
@@ -216,7 +263,6 @@ class FrameworkApp(QMainWindow):
 
         # Conectar troca de aba para atualizar status
         self.tab_widget.currentChanged.connect(self._on_tab_changed)
-        self.tab_widget.currentChanged.connect(self._on_locked_tab_selected)
 
         # Sincronizar perfis entre abas quando os módulos estiverem disponíveis
         if self.tab_manage_profiles is not None and self.tab_coupa is not None:
@@ -248,81 +294,11 @@ class FrameworkApp(QMainWindow):
         widget_class_name = MODULE_KEY_TO_WIDGET_CLASS.get(module_key, module_key)
         error_detail = IMPORT_ERRORS.get(widget_class_name) or IMPORT_ERRORS.get(module_key)
         widget = LockedModuleWidget(self, module_key, label, error_detail=error_detail)
-        self.locked_tabs.append((module_key, widget))
         self.tab_widget.addTab(widget, build_tab_title(module_key, False))
 
     def _on_tab_changed(self, index: int):
         tab_text = self.tab_widget.tabText(index).strip()
         self.lbl_status.setText(f"Aba ativa: {tab_text}")
-
-    def _on_locked_tab_selected(self, index: int):
-        for module_key, widget in self.locked_tabs:
-            if self.tab_widget.widget(index) is widget:
-                if not getattr(widget, "error_detail", None):
-                    self.request_module_install(module_key)
-                break
-
-    def request_module_install(self, module_key: str):
-        try:
-            installer_path = self._find_installer_for_module(module_key)
-            if installer_path is None:
-                QMessageBox.information(
-                    self,
-                    "Módulo indisponível",
-                    f"O instalador para o módulo '{module_key}' não foi encontrado localmente."
-                    "\nA instalação será iniciada assim que o pacote estiver disponível."
-                )
-                return
-
-            subprocess.Popen(
-                [installer_path, f"/MODULE={module_key}"],
-                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-            )
-            self.lbl_status.setText(f"Iniciando instalação do módulo: {module_key}")
-            QMessageBox.information(
-                self,
-                "Instalação iniciada",
-                "O instalador do módulo foi aberto. Complete a instalação para habilitar esta aba."
-            )
-        except OSError as exc:
-            QMessageBox.critical(self, "Erro ao iniciar instalação", str(exc))
-
-    def _find_installer_for_module(self, module_key: str) -> str | None:
-        app_dir = Path(sys.executable).resolve().parent
-        local_candidates = [
-            app_dir / "CoupaFramework_Setup_v1.1.1.exe",
-            app_dir / "installer.exe",
-            app_dir.parent / "installer_output" / "CoupaFramework_Setup_v1.1.1.exe",
-        ]
-        for candidate in local_candidates:
-            if candidate.exists():
-                return str(candidate)
-
-        try:
-            response = requests.get(
-                "https://api.github.com/repos/DuduProKill/Coupa-Framework/releases/latest",
-                timeout=10,
-                headers={"Accept": "application/vnd.github+json"},
-            )
-            response.raise_for_status()
-            data = response.json()
-            asset = next(
-                (
-                    asset for asset in data.get("assets", [])
-                    if isinstance(asset, dict) and asset.get("name", "").endswith(".exe")
-                ),
-                None,
-            )
-            if not asset:
-                return None
-
-            temp_path = Path(tempfile.gettempdir()) / asset["name"]
-            download_response = requests.get(asset.get("browser_download_url"), timeout=60)
-            download_response.raise_for_status()
-            temp_path.write_bytes(download_response.content)
-            return str(temp_path)
-        except (requests.RequestException, OSError, ValueError):
-            return None
 
     def set_status(self, message: str):
         self.lbl_status.setText(message)
