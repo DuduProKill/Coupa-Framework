@@ -735,6 +735,39 @@ QPushButton#btnOpenEdge:disabled {
     color: #484f58;
 }
 
+/* Card da tela de "módulo bloqueado" (não instalado / falhou ao carregar) */
+QFrame#lockedModuleCard {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 16px;
+}
+
+QLabel#lockedModuleIcon {
+    background: #1c2128;
+    border-radius: 34px;
+    font-size: 30px;
+    min-width: 68px;
+    max-width: 68px;
+    min-height: 68px;
+    max-height: 68px;
+    qproperty-alignment: AlignCenter;
+}
+
+QLabel#lockedModuleIcon[status="warning"] {
+    background: rgba(210, 153, 34, 0.12);
+}
+
+QLabel#lockedModuleTitle {
+    font-size: 18px;
+    font-weight: 800;
+    color: #f0f6fc;
+}
+
+QLabel#lockedModuleDesc {
+    font-size: 13px;
+    color: #8b949e;
+}
+
 /* Small outline buttons (compat: mantém btnClear como alias de btnClearField) */
 QPushButton#btnClear {
     background: transparent;

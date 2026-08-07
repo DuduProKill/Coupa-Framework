@@ -4,7 +4,7 @@ import traceback
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QTabWidget, QStatusBar,
     QLabel, QVBoxLayout, QWidget, QPushButton, QHBoxLayout,
-    QTextEdit, QProgressBar
+    QTextEdit, QProgressBar, QFrame
 )
 from PyQt6.QtCore import Qt, QTimer
 from modules import (
@@ -12,9 +12,11 @@ from modules import (
     PedidoPdfGeneratorWidget, RenomeadorWidget, OrganizadorWidget,
     EmailSenderWidget, ProfileManagerWidget, IMPORT_ERRORS
 )
-from modules.styles import APP_STYLESHEET
+from modules.styles import APP_STYLESHEET, set_status
 from modules.playwright_pool import cleanup_playwright_pool
 from modules.updater import UpdateManager
+from modules.ui_versions import VersionHistoryDialog
+from modules.ui_module_status import ModuleStatusDialog
 from modules.feature_selection import is_module_enabled
 from modules.module_installer import ModuleInstallWorker
 from modules.telemetry import init_telemetry
@@ -48,23 +50,46 @@ def build_tab_title(module_key: str, enabled: bool) -> str:
 
 
 class LockedModuleWidget(QWidget):
+    """Tela exibida no lugar de uma aba quando o módulo correspondente não
+    está disponível. Cobre dois cenários distintos:
+
+    - Módulo nunca instalado neste PC (instalação seletiva não marcou este
+      módulo, ou ele foi removido depois) -> oferece "Baixar este módulo".
+    - Módulo deveria estar instalado mas falhou ao carregar (dependência
+      ausente, arquivo corrompido, etc) -> mostra o erro real e oferece
+      "Reinstalar módulo" para tentar corrigir baixando os arquivos de novo.
+    """
+
+    FECHAMENTO_AUTOMATICO_SEGUNDOS = 5
+
     def __init__(self, parent, module_key: str, module_label: str, error_detail: str | None = None):
         super().__init__(parent)
         self.module_key = module_key
         self.module_label = module_label
         self.error_detail = error_detail
+        self._segundos_restantes = self.FECHAMENTO_AUTOMATICO_SEGUNDOS
 
-        layout = QVBoxLayout(self)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addStretch()
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        icon_label = QLabel("🔒")
-        icon_label.setStyleSheet("font-size: 48px;")
-        layout.addWidget(icon_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        card = QFrame()
+        card.setObjectName("lockedModuleCard")
+        card.setFixedWidth(440)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(36, 32, 36, 32)
+        card_layout.setSpacing(16)
+        card_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        title = QLabel("Módulo indisponível")
-        title.setStyleSheet("font-size: 20px; font-weight: 700;")
-        layout.addWidget(title, alignment=Qt.AlignmentFlag.AlignCenter)
+        icon_label = QLabel("⚠️" if error_detail else "🔒")
+        icon_label.setObjectName("lockedModuleIcon")
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        set_status(icon_label, "warning" if error_detail else "normal")
+        card_layout.addWidget(icon_label, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        title = QLabel("Módulo indisponível" if error_detail else "Módulo não instalado")
+        title.setObjectName("lockedModuleTitle")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(title, alignment=Qt.AlignmentFlag.AlignCenter)
 
         if error_detail:
             # Módulo deveria estar disponível, mas falhou ao carregar (dependência
@@ -76,56 +101,56 @@ class LockedModuleWidget(QWidget):
             )
         else:
             description = QLabel(
-                f"O módulo <b>{module_label}</b> não está instalado neste cliente."
+                f"O módulo <b>{module_label}</b> não está instalado neste cliente. "
+                f"Baixe e instale para liberar esta aba."
             )
+        description.setObjectName("lockedModuleDesc")
         description.setWordWrap(True)
         description.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(description, alignment=Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(description)
 
         if error_detail:
             error_box = QTextEdit()
             error_box.setReadOnly(True)
             error_box.setPlainText(error_detail)
-            error_box.setFixedHeight(160)
+            error_box.setFixedHeight(140)
             error_box.setStyleSheet(
                 "font-family: Consolas, monospace; font-size: 11px; color: #ff7b72;"
             )
-            layout.addWidget(error_box)
+            card_layout.addWidget(error_box)
 
-        if not error_detail:
-            # Só faz sentido oferecer "baixar módulo" quando o módulo de fato não
-            # está instalado — não quando ele falhou ao carregar por um erro interno.
-            button_row = QWidget()
-            button_row_layout = QHBoxLayout(button_row)
-            button_row_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            button_row_layout.addStretch()
+        button_row = QWidget()
+        button_row_layout = QHBoxLayout(button_row)
+        button_row_layout.setContentsMargins(0, 0, 0, 0)
+        button_row_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-            self.download_button = QPushButton("Baixar este módulo")
-            self.download_button.clicked.connect(self._on_download_requested)
-            button_row_layout.addWidget(self.download_button)
-            button_row_layout.addStretch()
-            layout.addWidget(button_row)
+        self.download_button = QPushButton("Reinstalar módulo" if error_detail else "Baixar este módulo")
+        self.download_button.setObjectName("btnPrimary")
+        self.download_button.clicked.connect(self._on_download_requested)
+        button_row_layout.addWidget(self.download_button)
+        card_layout.addWidget(button_row)
 
-            self.progress_bar = QProgressBar()
-            self.progress_bar.setFixedWidth(320)
-            self.progress_bar.setVisible(False)
-            layout.addWidget(self.progress_bar, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        card_layout.addWidget(self.progress_bar)
 
-            self.lbl_install_status = QLabel("")
-            self.lbl_install_status.setWordWrap(True)
-            self.lbl_install_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.lbl_install_status.setVisible(False)
-            layout.addWidget(self.lbl_install_status)
+        self.lbl_install_status = QLabel("")
+        self.lbl_install_status.setWordWrap(True)
+        self.lbl_install_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_install_status.setVisible(False)
+        card_layout.addWidget(self.lbl_install_status)
 
-            self._install_worker: ModuleInstallWorker | None = None
-        layout.addStretch()
+        self._install_worker: ModuleInstallWorker | None = None
+        self._fechamento_timer: QTimer | None = None
+
+        outer_layout.addWidget(card, alignment=Qt.AlignmentFlag.AlignCenter)
 
     def _on_download_requested(self):
         self.download_button.setEnabled(False)
         self.download_button.setText("Instalando...")
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setVisible(True)
-        self.lbl_install_status.setText("Preparando instalação...")
+        set_status(self.lbl_install_status, "muted", "Preparando instalação...")
         self.lbl_install_status.setVisible(True)
 
         self._install_worker = ModuleInstallWorker(self.module_key)
@@ -139,23 +164,42 @@ class LockedModuleWidget(QWidget):
             self.progress_bar.setValue(percentual)
         else:
             self.progress_bar.setRange(0, 0)
-        self.lbl_install_status.setText(mensagem)
+        set_status(self.lbl_install_status, "muted", mensagem)
 
     def _on_install_finished(self, sucesso: bool, mensagem: str):
         if not sucesso:
             self.progress_bar.setVisible(False)
-            self.lbl_install_status.setText(f"❌ {mensagem}")
+            set_status(self.lbl_install_status, "error", f"❌ {mensagem}")
             self.download_button.setEnabled(True)
-            self.download_button.setText("Baixar este módulo")
+            self.download_button.setText("Reinstalar módulo" if self.error_detail else "Baixar este módulo")
             return
 
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
-        self.lbl_install_status.setText(
-            "✅ Instalação iniciada! O aplicativo será fechado automaticamente em instantes "
-            "para concluir a instalação e reaberto sozinho em seguida."
+        self.download_button.setVisible(False)
+        self._segundos_restantes = self.FECHAMENTO_AUTOMATICO_SEGUNDOS
+        self._atualizar_mensagem_sucesso()
+
+        self._fechamento_timer = QTimer(self)
+        self._fechamento_timer.timeout.connect(self._tick_fechamento)
+        self._fechamento_timer.start(1000)
+
+    def _atualizar_mensagem_sucesso(self):
+        set_status(
+            self.lbl_install_status,
+            "success",
+            "✅ Instalação concluída! O aplicativo será reiniciado automaticamente em "
+            f"{self._segundos_restantes}s para ativar o módulo.",
         )
-        QTimer.singleShot(3000, self._fechar_aplicativo)
+
+    def _tick_fechamento(self):
+        self._segundos_restantes -= 1
+        if self._segundos_restantes <= 0:
+            self._fechamento_timer.stop()
+            set_status(self.lbl_install_status, "success", "✅ Reiniciando agora...")
+            QTimer.singleShot(300, self._fechar_aplicativo)
+            return
+        self._atualizar_mensagem_sucesso()
 
     def _fechar_aplicativo(self):
         # Fecha a janela principal (não só QApplication.quit()) para que o
@@ -180,7 +224,7 @@ class FrameworkApp(QMainWindow):
                 border-bottom: 2px solid #1f6feb;
             }
         """)
-        header_layout = QVBoxLayout(header)
+        header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(16, 0, 16, 0)
 
         self.lbl_header_title = QLabel("\U0001f310 Coupa Framework - Automação de Suprimentos")
@@ -190,6 +234,41 @@ class FrameworkApp(QMainWindow):
             font-weight: 700;
         """)
         header_layout.addWidget(self.lbl_header_title)
+        header_layout.addStretch()
+
+        # Ordem no header, da esquerda pra direita: Nome - Atualização (só
+        # quando pendente) - Painel - Versões. O botão de atualização fica
+        # oculto por padrão e só aparece quando existe uma versão nova e o
+        # usuário clicou em "Agora não" no aviso automático (ou uma tentativa
+        # de download falhou) - assim ele não perde a chance de atualizar sem
+        # precisar esperar o app reabrir.
+        self.btn_update_available = QPushButton("")
+        self.btn_update_available.setObjectName("btnWarning")
+        self.btn_update_available.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_update_available.setToolTip("Clique para baixar e instalar a atualização")
+        self.btn_update_available.setVisible(False)
+        self.btn_update_available.clicked.connect(self._on_update_button_clicked)
+        header_layout.addWidget(self.btn_update_available)
+
+        # Botão sempre visível com o resumo de quais módulos estão ativos
+        # neste PC (ver ModuleStatusDialog) - self._module_states é montado
+        # mais abaixo, depois que as abas são instanciadas.
+        self.btn_module_panel = QPushButton("🧩 Painel")
+        self.btn_module_panel.setObjectName("btnClear")
+        self.btn_module_panel.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_module_panel.setToolTip("Ver quais módulos estão ativos neste PC")
+        self.btn_module_panel.clicked.connect(self._open_module_panel)
+        header_layout.addWidget(self.btn_module_panel)
+
+        # Botão sempre visível para abrir o histórico de versões publicadas e
+        # instalar qualquer uma delas (inclusive uma mais antiga - rollback
+        # manual caso a versão atual tenha algum problema).
+        self.btn_version_history = QPushButton("🕘 Versões")
+        self.btn_version_history.setObjectName("btnClear")
+        self.btn_version_history.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_version_history.setToolTip("Ver e instalar versões anteriores (rollback)")
+        self.btn_version_history.clicked.connect(self._open_version_history)
+        header_layout.addWidget(self.btn_version_history)
 
         # --- Tab Widget ---
         self.tab_widget = QTabWidget()
@@ -262,6 +341,20 @@ class FrameworkApp(QMainWindow):
         else:
             self._add_locked_tab("perfis", "👥 Gerenciar Perfis")
 
+        # Painel de status (botão "🧩 Painel" no header): resume pra cada
+        # módulo se está ativo, com erro ao carregar, ou não instalado -
+        # mesma detecção usada pelas abas bloqueadas (_add_locked_tab),
+        # só que reunida numa lista pra dar uma visão geral de uma vez.
+        self._module_states = [
+            self._build_module_state("extrator", "📦 Extrator Inteligente", self.tab_coupa),
+            self._build_module_state("downloader", "📥 Baixador de Orçamentos", self.tab_downloader),
+            self._build_module_state("pdf", "📄 Gerador de PDF de Pedidos", self.tab_pdf_generator),
+            self._build_module_state("renomeador", "📝 Renomeador", self.tab_renomeador),
+            self._build_module_state("organizador", "🗂️ Organizador", self.tab_organizador),
+            self._build_module_state("email", "📧 Disparo de E-mails", self.tab_email_sender),
+            self._build_module_state("perfis", "👥 Gerenciar Perfis", self.tab_manage_profiles),
+        ]
+
         # Conectar troca de aba para atualizar status
         self.tab_widget.currentChanged.connect(self._on_tab_changed)
 
@@ -273,7 +366,35 @@ class FrameworkApp(QMainWindow):
 
         # Verifica atualizações em background via QThread (UI sempre na thread principal)
         self._update_manager = UpdateManager(self)
+        self._update_manager.update_declined.connect(self._show_update_available_button)
         self._update_manager.start()
+
+    @staticmethod
+    def _build_module_state(module_key: str, label: str, tab_widget) -> dict:
+        if tab_widget is not None:
+            return {"key": module_key, "label": label, "status": "ativo"}
+        widget_class_name = MODULE_KEY_TO_WIDGET_CLASS.get(module_key, module_key)
+        if IMPORT_ERRORS.get(widget_class_name) or IMPORT_ERRORS.get(module_key):
+            return {"key": module_key, "label": label, "status": "erro"}
+        return {"key": module_key, "label": label, "status": "nao_instalado"}
+
+    def _open_module_panel(self):
+        dialog = ModuleStatusDialog(self._module_states, self)
+        dialog.exec()
+
+    def _open_version_history(self):
+        dialog = VersionHistoryDialog(self)
+        dialog.exec()
+
+    def _show_update_available_button(self, latest_label: str):
+        self.btn_update_available.setText(f"⬆ Atualizar para {latest_label}")
+        self.btn_update_available.setEnabled(True)
+        self.btn_update_available.setVisible(True)
+
+    def _on_update_button_clicked(self):
+        self.btn_update_available.setEnabled(False)
+        self.btn_update_available.setText("Baixando atualização...")
+        self._update_manager.start_download_now()
 
     def _safe_instantiate(self, widget_class, module_key: str):
         """Instancia o widget somente se a classe carregou de verdade (não é None)

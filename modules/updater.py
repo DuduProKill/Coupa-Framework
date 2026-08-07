@@ -1,6 +1,9 @@
 import logging
+import os
 import subprocess
 import tempfile
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import requests
@@ -11,6 +14,20 @@ logger = logging.getLogger(__name__)
 
 GITHUB_REPO = "DuduProKill/Coupa-Framework"
 CURRENT_VERSION = "1.1.4"
+
+
+def build_installer_log_path(prefix: str) -> str:
+    """Caminho de log para uma execução silenciosa do instalador (flag /LOG).
+
+    Sem isso, uma instalação silenciosa que falha (como o bug do "{app}"
+    expandido cedo demais) não deixa nenhum rastro em disco para diagnóstico -
+    só o que aparecer na tela, se aparecer. Usa a mesma pasta de logs que
+    modules/logger.py já usa para o app em si.
+    """
+    log_dir = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "CoupaFramework" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return str(log_dir / f"{prefix}_{timestamp}.log")
 
 
 def _normalize_version(value: str) -> Optional[tuple[int, int, int]]:
@@ -39,6 +56,20 @@ def _is_newer_version(latest_tag: str, current_version: str) -> bool:
     if latest is None or current is None:
         return False
     return latest > current
+
+
+def _run_installer_and_restart(installer_path: str):
+    """Dispara o instalador silenciosamente e fecha o app atual.
+
+    Compartilhado pelo fluxo de atualização automática e pelo fluxo manual de
+    instalar uma versão específica (rollback) - ambos terminam do mesmo jeito.
+    """
+    log_path = build_installer_log_path("installer_update")
+    subprocess.Popen(
+        [installer_path, "/SILENT", "/CLOSEAPPLICATIONS", "/CURRENTUSER", f"/LOG={log_path}"],
+        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+    )
+    QApplication.quit()
 
 
 class _CheckThread(QThread):
@@ -109,20 +140,33 @@ class _DownloadThread(QThread):
 
 
 class UpdateManager(QObject):
+    # Emitido quando existe atualização disponível mas o usuário optou por não
+    # instalar agora (ou uma tentativa de download falhou) - carrega o rótulo
+    # da versão (ex: "v1.1.5") para quem quiser oferecer um jeito de retomar
+    # a atualização mais tarde sem esperar o app reabrir.
+    update_declined = pyqtSignal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._parent_widget = parent
         self._check_thread = _CheckThread()
         self._check_thread.update_found.connect(self._on_update_found)
         self._download_thread = None
+        self._latest_tag = ""
+        self._asset_url = ""
 
     def start(self):
         self._check_thread.start()
 
     def _on_update_found(self, latest_tag: str, asset_url: str):
+        self._latest_tag = latest_tag
+        self._asset_url = asset_url
+        self._prompt_update()
+
+    def _prompt_update(self):
         msg = QMessageBox(self._parent_widget)
         msg.setWindowTitle("Atualização disponível")
-        latest_label = _format_version_label(latest_tag)
+        latest_label = _format_version_label(self._latest_tag)
         current_label = _format_version_label(CURRENT_VERSION)
         msg.setText(
             f"Nova versão disponível: <b>{latest_label}</b><br>"
@@ -135,10 +179,131 @@ class UpdateManager(QObject):
         msg.exec()
 
         if msg.clickedButton() != btn_sim:
+            self.update_declined.emit(latest_label)
             return
 
+        self._start_download()
+
+    def start_download_now(self):
+        """Retoma a atualização já detectada, sem perguntar de novo.
+
+        Chamada pelo botão manual que fica visível depois que o usuário clica
+        em "Agora não" no prompt inicial - o clique no botão já É a
+        confirmação, não faz sentido perguntar de novo.
+        """
+        if not self._asset_url:
+            return
+        self._start_download()
+
+    def _start_download(self):
         self._progress_dlg = QProgressDialog("Baixando atualização...", None, 0, 100, self._parent_widget)
         self._progress_dlg.setWindowTitle("Atualizando")
+        self._progress_dlg.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self._progress_dlg.setCancelButton(None)
+        self._progress_dlg.show()
+
+        self._download_thread = _DownloadThread(self._asset_url)
+        self._download_thread.progress.connect(self._progress_dlg.setValue)
+        self._download_thread.finished.connect(self._on_downloaded)
+        self._download_thread.error.connect(self._on_error)
+        self._download_thread.start()
+
+    def _on_downloaded(self, path: str):
+        self._progress_dlg.close()
+        _run_installer_and_restart(path)
+
+    def _on_error(self, err: str):
+        self._progress_dlg.close()
+        QMessageBox.critical(self._parent_widget, "Erro na atualização", f"Falha ao baixar: {err}")
+        # Reoferece o botão manual para o usuário poder tentar de novo sem
+        # precisar reabrir o aplicativo.
+        self.update_declined.emit(_format_version_label(self._latest_tag))
+
+
+class _ListReleasesThread(QThread):
+    releases_loaded = pyqtSignal(list)  # lista de dicts: tag, label, asset_url, published_at
+    error = pyqtSignal(str)
+
+    def run(self):
+        try:
+            response = requests.get(
+                f"https://api.github.com/repos/{GITHUB_REPO}/releases",
+                timeout=10,
+                headers={"Accept": "application/vnd.github+json"},
+                params={"per_page": 15},
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            releases = []
+            for item in data:
+                if not isinstance(item, dict) or item.get("draft"):
+                    continue
+                tag = item.get("tag_name", "")
+                asset_url = next(
+                    (
+                        asset.get("browser_download_url")
+                        for asset in item.get("assets", [])
+                        if isinstance(asset, dict) and asset.get("name", "").endswith(".exe")
+                    ),
+                    None,
+                )
+                if not tag or not asset_url:
+                    continue
+                releases.append({
+                    "tag": tag,
+                    "label": _format_version_label(tag),
+                    "asset_url": asset_url,
+                    "published_at": item.get("published_at", ""),
+                })
+            self.releases_loaded.emit(releases)
+        except requests.RequestException as exc:
+            logger.exception("Falha ao listar versões no GitHub: %s", exc)
+            self.error.emit(str(exc))
+        except ValueError as exc:
+            logger.exception("Resposta inválida da API do GitHub ao listar versões: %s", exc)
+            self.error.emit(str(exc))
+
+
+class VersionManager(QObject):
+    """Lista releases publicadas no GitHub e instala uma versão específica.
+
+    Usada pela tela de histórico de versões para permitir rollback: baixa o
+    instalador daquela release e roda o mesmo fluxo silencioso de instalação
+    usado pelo auto-update, só que apontando para a versão escolhida pelo
+    usuário em vez da mais recente.
+    """
+
+    releases_loaded = pyqtSignal(list)
+    list_error = pyqtSignal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._parent_widget = parent
+        self._list_thread = None
+        self._download_thread = None
+        self._progress_dlg = None
+
+    def list_releases(self):
+        self._list_thread = _ListReleasesThread()
+        self._list_thread.releases_loaded.connect(self.releases_loaded)
+        self._list_thread.error.connect(self.list_error)
+        self._list_thread.start()
+
+    def install_version(self, asset_url: str, label: str):
+        confirm = QMessageBox.question(
+            self._parent_widget,
+            "Confirmar instalação",
+            f"Instalar a versão <b>{label}</b>?<br><br>"
+            "O aplicativo será fechado automaticamente para concluir a instalação. "
+            "Se for uma versão mais antiga que a atual, isso funciona como um rollback.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        self._progress_dlg = QProgressDialog(f"Baixando {label}...", None, 0, 100, self._parent_widget)
+        self._progress_dlg.setWindowTitle("Instalando versão")
         self._progress_dlg.setWindowModality(Qt.WindowModality.ApplicationModal)
         self._progress_dlg.setCancelButton(None)
         self._progress_dlg.show()
@@ -151,12 +316,8 @@ class UpdateManager(QObject):
 
     def _on_downloaded(self, path: str):
         self._progress_dlg.close()
-        subprocess.Popen(
-            [path, "/SILENT", "/CLOSEAPPLICATIONS", "/CURRENTUSER"],
-            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-        )
-        QApplication.quit()
+        _run_installer_and_restart(path)
 
     def _on_error(self, err: str):
         self._progress_dlg.close()
-        QMessageBox.critical(self._parent_widget, "Erro na atualização", f"Falha ao baixar: {err}")
+        QMessageBox.critical(self._parent_widget, "Erro ao instalar versão", f"Falha ao baixar: {err}")

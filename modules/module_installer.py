@@ -6,6 +6,8 @@ from pathlib import Path
 import requests
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from modules.updater import build_installer_log_path
+
 GITHUB_REPO = "DuduProKill/Coupa-Framework"
 LOCAL_INSTALLER_NAMES = ("CoupaFramework_Setup_v1.1.2.exe", "installer.exe")
 
@@ -44,6 +46,7 @@ class ModuleInstallWorker(QThread):
 
         self.progress_signal.emit(-1, "Iniciando instalação do módulo...")
         try:
+            log_path = build_installer_log_path(f"installer_module_{self.module_key}")
             subprocess.Popen(
                 [
                     installer_path,
@@ -51,6 +54,7 @@ class ModuleInstallWorker(QThread):
                     "/SUPPRESSMSGBOXES",
                     "/NORESTART",
                     f"/MODULE={self.module_key}",
+                    f"/LOG={log_path}",
                 ],
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
             )

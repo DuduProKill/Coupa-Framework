@@ -36,6 +36,18 @@ def _safe_import(attr_name: str, module_name: str):
     try:
         module = importlib.import_module(module_name)
         return getattr(module, attr_name)
+    except ModuleNotFoundError as exc:
+        if getattr(exc, "name", None) == module_name:
+            # O arquivo do próprio módulo não existe neste PC (instalação seletiva
+            # removeu o módulo, ou ele nunca foi baixado) - não é um bug, é o
+            # estado esperado de "módulo não instalado". Não registra em
+            # IMPORT_ERRORS para a tela bloqueada mostrar a mensagem amigável de
+            # "não instalado" em vez de um traceback de erro interno.
+            return None
+        err_text = traceback.format_exc()
+        IMPORT_ERRORS[attr_name] = err_text
+        _get_logger().error("Falha ao importar '%s' de '%s':\n%s", attr_name, module_name, err_text)
+        return None
     except Exception:
         err_text = traceback.format_exc()
         IMPORT_ERRORS[attr_name] = err_text

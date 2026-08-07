@@ -1,7 +1,7 @@
 import asyncio
 import re
 import threading
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -17,6 +17,35 @@ _JS_NEXT_SIBLING_TEXT = (
     "(element) => element.nextElementSibling ? "
     "element.nextElementSibling.innerText : element.innerText"
 )
+
+
+def _describe_network_error(exc: Exception) -> Optional[str]:
+    """Traduz erros comuns de rede/conexão do Playwright para uma mensagem
+    acionável em vez do texto cru da exceção (ex: "net::ERR_NAME_NOT_RESOLVED
+    at https://...", que não deixa claro se o problema é a internet, a URL
+    configurada ou o Coupa fora do ar).
+
+    Retorna None quando o erro não é reconhecido como falha de rede/conexão -
+    nesse caso o chamador deve usar a mensagem original da exceção.
+    """
+    texto_lower = str(exc).lower()
+
+    if "err_name_not_resolved" in texto_lower or "err_internet_disconnected" in texto_lower:
+        return (
+            "Sem conexão com a internet, ou a URL da instância do Coupa está "
+            "incorreta. Verifique sua rede e a configuração em COUPA_BASE_URL."
+        )
+    if "err_connection_refused" in texto_lower or "err_connection_timed_out" in texto_lower:
+        return (
+            "Não foi possível conectar à instância do Coupa configurada. "
+            "Ela pode estar fora do ar, ou sua rede/VPN está bloqueando o acesso."
+        )
+    if "timeout" in texto_lower and ("goto" in texto_lower or "navigat" in texto_lower or "waiting for" in texto_lower):
+        return (
+            "O Coupa demorou demais para responder (timeout). Sua conexão pode "
+            "estar lenta, ou o Coupa está sobrecarregado - tente novamente."
+        )
+    return None
 
 
 class CoupaScraper:
@@ -114,6 +143,13 @@ class CoupaScraper:
         try:
             await page.goto(coupa_base_url, wait_until="domcontentloaded", timeout=30000)
         except Exception as e:
+            mensagem_rede = _describe_network_error(e)
+            if mensagem_rede:
+                # Erro de rede na primeira navegação é fatal para a extração
+                # inteira - continuar tentaria acessar todas as requisições
+                # uma por uma e falharia identicamente em cada uma.
+                log_callback(f"❌ {mensagem_rede}")
+                return [{"Erro": mensagem_rede}]
             log_callback(f"Não foi possível abrir a página inicial do Coupa: {str(e)}")
 
         if edge_ready_callback:
@@ -302,8 +338,13 @@ class CoupaScraper:
                 )
 
             except Exception as e:
-                log_callback(f"Erro na requisição #{req}: {str(e)}")
-                extracted_data.append({"requisicao": req, "erro": f"Falha na extração: {str(e)}"})
+                mensagem_rede = _describe_network_error(e)
+                if mensagem_rede:
+                    log_callback(f"❌ Requisição #{req}: {mensagem_rede}")
+                    extracted_data.append({"requisicao": req, "erro": mensagem_rede})
+                else:
+                    log_callback(f"Erro na requisição #{req}: {str(e)}")
+                    extracted_data.append({"requisicao": req, "erro": f"Falha na extração: {str(e)}"})
 
         return extracted_data
 

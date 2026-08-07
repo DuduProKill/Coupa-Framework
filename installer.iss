@@ -23,6 +23,11 @@ VersionInfoDescription=Coupa Framework - Automação de Suprimentos
 AppId={{B3F2A1D4-7E6C-4F8B-9A2D-1C5E8F3B7A9D}
 CloseApplications=yes
 RestartApplications=no
+; Grava um log da instalação (usado em conjunto com /LOG="caminho" nas
+; chamadas silenciosas feitas pelo próprio app - ver build_installer_log_path
+; em modules/updater.py). Sem isso, uma instalação silenciosa que falha não
+; deixa nenhum rastro em disco para diagnóstico.
+SetupLogging=yes
 
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
@@ -52,7 +57,23 @@ Type: filesandordirs; Name: "{app}"
 [Code]
 var
   ModuleSelectionPage: TInputOptionWizardPage;
+  ModuleSummaryPage: TOutputMsgMemoWizardPage;
+  BtnSelecionarTudo, BtnDesmarcarTudo: TNewButton;
   RequestedModuleName: String;
+  ModuleLabels: TArrayOfString;
+  ModuleValuesLoaded: Boolean;
+
+procedure InitModuleLabels();
+begin
+  SetArrayLength(ModuleLabels, 7);
+  ModuleLabels[0] := 'Extrator Inteligente';
+  ModuleLabels[1] := 'Baixador de Orçamentos';
+  ModuleLabels[2] := 'Gerador de PDF de Pedidos';
+  ModuleLabels[3] := 'Renomeador';
+  ModuleLabels[4] := 'Organizador';
+  ModuleLabels[5] := 'Disparo de E-mails';
+  ModuleLabels[6] := 'Gerenciar Perfis';
+end;
 
 function ConfirmarLimpezaDados(): Boolean;
 begin
@@ -124,27 +145,19 @@ begin
   end;
 end;
 
-procedure InitializeWizard();
+// Carrega os valores salvos de module_selection.json e aplica o override de
+// /MODULE=xxx. Depende de ExpandConstant('{app}...'), então só pode ser
+// chamada depois que Setup já resolveu a constante {app} - NUNCA a partir de
+// InitializeWizard/InitializeSetup, ou estoura "constant before it was
+// initialized". É chamada tanto de CurPageChanged (instalação interativa,
+// para pré-marcar os checkboxes antes da página aparecer) quanto de
+// CurStepChanged em ssInstall (rede de segurança para instalação silenciosa,
+// onde CurPageChanged nunca dispara porque nenhuma página é exibida).
+procedure LoadModuleSelectionValues();
 begin
-  RequestedModuleName := GetRequestedModuleName();
-  ModuleSelectionPage := CreateInputOptionPage(
-    wpSelectTasks,
-    'Módulos do programa',
-    'Escolha quais módulos deseja instalar.',
-    'Marque os módulos que você quer usar. Todas as opções vêm marcadas por padrão.',
-    False, False
-  );
+  if ModuleValuesLoaded then
+    Exit;
 
-  ModuleSelectionPage.Add('Extrator Inteligente');
-  ModuleSelectionPage.Add('Baixador de Orçamentos');
-  ModuleSelectionPage.Add('Gerador de PDF de Pedidos');
-  ModuleSelectionPage.Add('Renomeador');
-  ModuleSelectionPage.Add('Organizador');
-  ModuleSelectionPage.Add('Disparo de E-mails');
-  ModuleSelectionPage.Add('Gerenciar Perfis');
-
-  // Pré-popula com a seleção já instalada (se houver), preservando módulos
-  // que o usuário já tinha habilitado em instalações anteriores.
   ModuleSelectionPage.Values[0] := ReadModuleValueFromJson('extrator', True);
   ModuleSelectionPage.Values[1] := ReadModuleValueFromJson('downloader', True);
   ModuleSelectionPage.Values[2] := ReadModuleValueFromJson('pdf', True);
@@ -162,6 +175,117 @@ begin
   if RequestedModuleName = 'organizador' then ModuleSelectionPage.Values[4] := True;
   if RequestedModuleName = 'email' then ModuleSelectionPage.Values[5] := True;
   if RequestedModuleName = 'perfis' then ModuleSelectionPage.Values[6] := True;
+
+  ModuleValuesLoaded := True;
+end;
+
+procedure SelecionarTudoClick(Sender: TObject);
+var
+  Index: Integer;
+begin
+  for Index := 0 to ModuleSelectionPage.CheckListBox.Items.Count - 1 do
+    ModuleSelectionPage.CheckListBox.Checked[Index] := True;
+end;
+
+procedure DesmarcarTudoClick(Sender: TObject);
+var
+  Index: Integer;
+begin
+  for Index := 0 to ModuleSelectionPage.CheckListBox.Items.Count - 1 do
+    ModuleSelectionPage.CheckListBox.Checked[Index] := False;
+end;
+
+// Monta o texto de resumo exibido na página final de revisão, com base na
+// seleção feita pelo usuário na página anterior.
+function BuildModuleSummaryText(): String;
+var
+  Summary: String;
+  Index: Integer;
+  TemModuloSelecionado: Boolean;
+begin
+  Summary := '';
+  TemModuloSelecionado := False;
+  for Index := 0 to GetArrayLength(ModuleLabels) - 1 do
+  begin
+    if ModuleSelectionPage.Values[Index] then
+    begin
+      Summary := Summary + '  ✓  ' + ModuleLabels[Index] + #13#10;
+      TemModuloSelecionado := True;
+    end;
+  end;
+
+  if not TemModuloSelecionado then
+    Summary := '  (nenhum módulo selecionado - o programa abrirá sem abas ativas)' + #13#10;
+
+  Result := Summary;
+end;
+
+procedure InitializeWizard();
+begin
+  InitModuleLabels();
+  ModuleValuesLoaded := False;
+  RequestedModuleName := GetRequestedModuleName();
+  ModuleSelectionPage := CreateInputOptionPage(
+    wpSelectTasks,
+    'Módulos do programa',
+    'Escolha quais módulos deseja instalar.',
+    'Marque os módulos que você quer usar. Todas as opções vêm marcadas por padrão.',
+    False, False
+  );
+
+  ModuleSelectionPage.Add('Extrator Inteligente');
+  ModuleSelectionPage.Add('Baixador de Orçamentos');
+  ModuleSelectionPage.Add('Gerador de PDF de Pedidos');
+  ModuleSelectionPage.Add('Renomeador');
+  ModuleSelectionPage.Add('Organizador');
+  ModuleSelectionPage.Add('Disparo de E-mails');
+  ModuleSelectionPage.Add('Gerenciar Perfis');
+
+  // Não lemos module_selection.json aqui: {app} ainda não foi inicializada
+  // neste ponto do wizard (ver LoadModuleSelectionValues, chamada mais
+  // adiante em CurPageChanged/CurStepChanged).
+
+  // Botões "Selecionar tudo" / "Desmarcar tudo" logo abaixo da lista de
+  // módulos, para não precisar marcar um por um.
+  BtnSelecionarTudo := TNewButton.Create(WizardForm);
+  BtnSelecionarTudo.Parent := ModuleSelectionPage.Surface;
+  BtnSelecionarTudo.Caption := 'Selecionar tudo';
+  BtnSelecionarTudo.Left := 0;
+  BtnSelecionarTudo.Top := ModuleSelectionPage.CheckListBox.Top + ModuleSelectionPage.CheckListBox.Height + 8;
+  BtnSelecionarTudo.Width := 140;
+  BtnSelecionarTudo.Height := 23;
+  BtnSelecionarTudo.OnClick := @SelecionarTudoClick;
+
+  BtnDesmarcarTudo := TNewButton.Create(WizardForm);
+  BtnDesmarcarTudo.Parent := ModuleSelectionPage.Surface;
+  BtnDesmarcarTudo.Caption := 'Desmarcar tudo';
+  BtnDesmarcarTudo.Left := BtnSelecionarTudo.Left + BtnSelecionarTudo.Width + 8;
+  BtnDesmarcarTudo.Top := BtnSelecionarTudo.Top;
+  BtnDesmarcarTudo.Width := 140;
+  BtnDesmarcarTudo.Height := 23;
+  BtnDesmarcarTudo.OnClick := @DesmarcarTudoClick;
+
+  // Página de resumo final, logo após a seleção de módulos, para o usuário
+  // confirmar visualmente o que será instalado antes de prosseguir.
+  ModuleSummaryPage := CreateOutputMsgMemoPage(
+    ModuleSelectionPage.ID,
+    'Resumo da instalação',
+    'Confira os módulos que serão instalados',
+    'Estes são os módulos que ficarão disponíveis no Coupa Framework após a instalação:',
+    ''
+  );
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if CurPageID = ModuleSelectionPage.ID then
+    // Pré-popula os checkboxes com a seleção salva de instalações
+    // anteriores só agora, quando a página está prestes a ser exibida -
+    // {app} já está disponível neste ponto (instalação interativa).
+    LoadModuleSelectionValues();
+
+  if CurPageID = ModuleSummaryPage.ID then
+    ModuleSummaryPage.RichEditViewer.Lines.Text := BuildModuleSummaryText();
 end;
 
 function BoolToJsonString(Value: Boolean): String;
@@ -256,6 +380,16 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
+  if CurStep = ssInstall then
+  begin
+    // Rede de segurança para instalação silenciosa (/VERYSILENT): nesse modo
+    // nenhuma página é exibida, então CurPageChanged nunca dispara e os
+    // valores nunca seriam carregados sem isso. LoadModuleSelectionValues já
+    // é idempotente (ModuleValuesLoaded), então não duplica trabalho quando
+    // a instalação foi interativa.
+    LoadModuleSelectionValues();
+  end;
+
   if CurStep = ssPostInstall then
   begin
     // Salva a seleção aqui (em vez de em NextButtonClick) para funcionar tanto
