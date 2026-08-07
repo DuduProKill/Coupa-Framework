@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 logger = logging.getLogger(__name__)
 
 GITHUB_REPO = "DuduProKill/Coupa-Framework"
-CURRENT_VERSION = "1.1.3"
+CURRENT_VERSION = "1.1.4"
 
 
 def _normalize_version(value: str) -> Optional[tuple[int, int, int]]:
